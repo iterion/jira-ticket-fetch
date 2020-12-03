@@ -17,9 +17,14 @@ use tui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::Spans,
-    widgets::{Block, Borders, List, ListItem},
+    widgets::{Block, Borders, List, ListItem, Paragraph},
     Terminal,
 };
+
+enum InputMode {
+    Normal,
+    Editing,
+}
 
 fn main() -> Result<()> {
     // Terminal initialization
@@ -34,7 +39,7 @@ fn main() -> Result<()> {
     let issues = get_current_issues()?;
 
     // Initialize TUI Events
-    let events = Events::new();
+    let mut events = Events::new();
     // Initialize TUI App
     let mut app = App::from_issues(issues);
 
@@ -67,97 +72,140 @@ fn main() -> Result<()> {
                         .add_modifier(Modifier::BOLD),
                 )
                 .highlight_symbol(">> ");
-
-            let branches: Vec<ListItem> = app
-                .branches
-                .items
-                .iter()
-                .map(|i| {
-                    let line_content = format!("{}", i.name);
-                    let lines = vec![Spans::from(line_content)];
-                    ListItem::new(lines).style(Style::default().fg(Color::Black).bg(Color::White))
-                })
-                .collect();
-            let branches = List::new(branches)
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title("Existing Branches"),
-                )
-                .highlight_style(
-                    Style::default()
-                        .bg(Color::LightGreen)
-                        .add_modifier(Modifier::BOLD),
-                )
-                .highlight_symbol(">> ");
-
             f.render_stateful_widget(issues, chunks[0], &mut app.issues.state);
-            f.render_stateful_widget(branches, chunks[1], &mut app.branches.state);
+
+            match app.input_mode {
+                InputMode::Normal => {
+                    let branches: Vec<ListItem> = app
+                        .branches
+                        .items
+                        .iter()
+                        .map(|i| {
+                            let line_content = format!("{}", i.name);
+                            let lines = vec![Spans::from(line_content)];
+                            ListItem::new(lines)
+                                .style(Style::default().fg(Color::Black).bg(Color::White))
+                        })
+                        .collect();
+                    let branches = List::new(branches)
+                        .block(
+                            Block::default()
+                                .borders(Borders::ALL)
+                                .title("Existing Branches"),
+                        )
+                        .highlight_style(
+                            Style::default()
+                                .bg(Color::LightGreen)
+                                .add_modifier(Modifier::BOLD),
+                        )
+                        .highlight_symbol(">> ");
+
+                    f.render_stateful_widget(branches, chunks[1], &mut app.branches.state);
+                }
+                InputMode::Editing => {
+                    let input = Paragraph::new(app.new_branch_name().clone())
+                        .style(Style::default().fg(Color::Yellow))
+                        .block(Block::default().borders(Borders::ALL).title("Input"));
+                    f.render_widget(input, chunks[1]);
+                    f.set_cursor(
+                        // Put cursor past the end of the input text
+                        chunks[1].x + app.new_branch_name().len() as u16 + 1,
+                        // Move one line down, from the border to the input line
+                        chunks[1].y + 1,
+                    )
+                }
+            }
         })?;
 
         match events.next()? {
-            Event::Input(input) => match input {
-                Key::Char('q') => {
-                    break;
-                }
-                Key::Char('\n') => {
-                    if app.issues_focused {
-                        // Focus on first branch
-                        app.branches.next();
-                        app.issues_focused = false;
-                    } else {
-                        if let Some(name) = app.selected_branch_name() {
-                            // TODO more efficient comparison
-                            if name == "Create New".to_string() {
-                                if let Some(key) = app.selected_issue_key() {
-                                    match create_and_use_branch(&repo, key) {
-                                        Ok(_) => break,
-                                        Err(e) => println!("Error setting branch: {:?}", e),
+            Event::Input(input) => {
+                match app.input_mode {
+                    InputMode::Normal => {
+                        match input {
+                            Key::Char('q') => {
+                                break;
+                            }
+                            Key::Char('\n') => {
+                                if app.issues_focused {
+                                    // Focus on first branch
+                                    app.branches.next();
+                                    app.issues_focused = false;
+                                } else {
+                                    if let Some(name) = app.selected_branch_name() {
+                                        // TODO more efficient comparison
+                                        if name == "Create New".to_string() {
+                                            app.input_mode = InputMode::Editing
+                                        // if let Some(key) = app.selected_issue_key() {
+                                        //     match create_and_use_branch(&repo, key) {
+                                        //         Ok(_) => break,
+                                        //         Err(e) => println!("Error setting branch: {:?}", e),
+                                        //     }
+                                        // }
+                                        } else {
+                                            match checkout_branch(&repo, name) {
+                                                Ok(_) => break,
+                                                Err(e) => println!("Error setting branch: {:?}", e),
+                                            }
+                                        }
                                     }
                                 }
-                            } else {
-                                match checkout_branch(&repo, name) {
-                                    Ok(_) => break,
-                                    Err(e) => println!("Error setting branch: {:?}", e),
+                            }
+                            Key::Right => {
+                                if app.issues_focused && app.selected_issue_key().is_some() {
+                                    // Focus on first branch
+                                    app.branches.next();
+                                    app.issues_focused = false;
                                 }
                             }
+                            Key::Left => {
+                                if app.issues_focused {
+                                    app.issues.unselect();
+                                    app.find_relevant_branches(&repo);
+                                } else {
+                                    app.branches.unselect();
+                                    app.issues_focused = true;
+                                }
+                            }
+                            Key::Down => {
+                                if app.issues_focused {
+                                    app.issues.next();
+                                    app.find_relevant_branches(&repo);
+                                } else {
+                                    app.branches.next();
+                                }
+                            }
+                            Key::Up => {
+                                if app.issues_focused {
+                                    app.issues.previous();
+                                    app.find_relevant_branches(&repo);
+                                } else {
+                                    app.branches.previous();
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    InputMode::Editing => {
+                        match input {
+                            Key::Char('\n') => {
+                                // app.messages.push(app.input.drain(..).collect());
+                                break;
+                            }
+                            Key::Char(c) => {
+                                app.input.push(c);
+                            }
+                            Key::Backspace => {
+                                app.input.pop();
+                            }
+                            Key::Esc => {
+                                app.input_mode = InputMode::Normal;
+                                events.enable_exit_key();
+                            }
+                            _ => {}
                         }
                     }
                 }
-                Key::Right => {
-                    if app.issues_focused {
-                        // Focus on first branch
-                        app.branches.next();
-                        app.issues_focused = false;
-                    }
-                }
-                Key::Left => {
-                    if app.issues_focused {
-                        app.issues.unselect();
-                        app.find_relevant_branches(&repo);
-                    } else {
-                        app.branches.unselect();
-                        app.issues_focused = true;
-                    }
-                }
-                Key::Down => {
-                    if app.issues_focused {
-                        app.issues.next();
-                        app.find_relevant_branches(&repo);
-                    } else {
-                        app.branches.next();
-                    }
-                }
-                Key::Up => {
-                    if app.issues_focused {
-                        app.issues.previous();
-                        app.find_relevant_branches(&repo);
-                    } else {
-                        app.branches.previous();
-                    }
-                }
-                _ => {}
-            },
+            }
             Event::Tick => {}
         }
     }
@@ -213,6 +261,8 @@ struct App {
     issues: StatefulList<IssueSummary>,
     branches: StatefulList<BranchSummary>,
     issues_focused: bool,
+    input_mode: InputMode,
+    input: String,
 }
 
 impl App {
@@ -221,6 +271,8 @@ impl App {
             issues: StatefulList::with_items(issues),
             branches: StatefulList::new(),
             issues_focused: true,
+            input_mode: InputMode::Normal,
+            input: String::new(),
         }
     }
 
@@ -250,6 +302,13 @@ impl App {
         };
 
         Ok(())
+    }
+
+    fn new_branch_name(&self) -> String {
+        match self.selected_issue_key() {
+            Some(key) => format!("{}-{}", key, self.input),
+            None => "unhandled-error".to_string(),
+        }
     }
 }
 
