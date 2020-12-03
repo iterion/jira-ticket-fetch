@@ -16,7 +16,7 @@ use tui::{
     backend::TermionBackend,
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    text::{Spans},
+    text::Spans,
     widgets::{Block, Borders, List, ListItem},
     Terminal,
 };
@@ -101,29 +101,64 @@ fn main() -> Result<()> {
                     break;
                 }
                 Key::Char('\n') => {
-                    if let Some(key) = app.selected_issue_key() {
-                        match create_and_use_branch(&repo, key) {
-                            Ok(_) => break,
-                            Err(e) => println!("Error setting branch: {:?}", e),
+                    if app.issues_focused {
+                        // Focus on first branch
+                        app.branches.next();
+                        app.issues_focused = false;
+                    } else {
+                        if let Some(name) = app.selected_branch_name() {
+                            // TODO more efficient comparison
+                            if name == "Create New".to_string() {
+                                if let Some(key) = app.selected_issue_key() {
+                                    match create_and_use_branch(&repo, key) {
+                                        Ok(_) => break,
+                                        Err(e) => println!("Error setting branch: {:?}", e),
+                                    }
+                                }
+                            } else {
+                                match checkout_branch(&repo, name) {
+                                    Ok(_) => break,
+                                    Err(e) => println!("Error setting branch: {:?}", e),
+                                }
+                            }
                         }
                     }
                 }
+                Key::Right => {
+                    if app.issues_focused {
+                        // Focus on first branch
+                        app.branches.next();
+                        app.issues_focused = false;
+                    }
+                }
                 Key::Left => {
-                    app.issues.unselect();
-                    app.find_relevant_branches(&repo);
+                    if app.issues_focused {
+                        app.issues.unselect();
+                        app.find_relevant_branches(&repo);
+                    } else {
+                        app.branches.unselect();
+                        app.issues_focused = true;
+                    }
                 }
                 Key::Down => {
-                    app.issues.next();
-                    app.find_relevant_branches(&repo);
+                    if app.issues_focused {
+                        app.issues.next();
+                        app.find_relevant_branches(&repo);
+                    } else {
+                        app.branches.next();
+                    }
                 }
                 Key::Up => {
-                    app.issues.previous();
-                    app.find_relevant_branches(&repo);
+                    if app.issues_focused {
+                        app.issues.previous();
+                        app.find_relevant_branches(&repo);
+                    } else {
+                        app.branches.previous();
+                    }
                 }
                 _ => {}
             },
-            Event::Tick => {
-            }
+            Event::Tick => {}
         }
     }
     Ok(())
@@ -177,6 +212,7 @@ fn get_jira_client() -> Result<Jira> {
 struct App {
     issues: StatefulList<IssueSummary>,
     branches: StatefulList<BranchSummary>,
+    issues_focused: bool,
 }
 
 impl App {
@@ -184,15 +220,21 @@ impl App {
         App {
             issues: StatefulList::with_items(issues),
             branches: StatefulList::new(),
+            issues_focused: true,
         }
     }
 
     fn selected_issue_key(&self) -> Option<String> {
         match self.issues.state.selected() {
-            Some(i) => {
-                Some(self.issues.items[i].key.clone())
-            },
-            None => None
+            Some(i) => Some(self.issues.items[i].key.clone()),
+            None => None,
+        }
+    }
+
+    fn selected_branch_name(&self) -> Option<String> {
+        match self.branches.state.selected() {
+            Some(i) => Some(self.branches.items[i].name.clone()),
+            None => None,
         }
     }
 
@@ -202,7 +244,9 @@ impl App {
         if let Some(key) = self.selected_issue_key() {
             let branches = matching_branches(repo, key)?;
             self.branches.items = branches;
-            self.branches.items.push(BranchSummary{name: "Create New".to_string()});
+            self.branches.items.push(BranchSummary {
+                name: "Create New".to_string(),
+            });
         };
 
         Ok(())
@@ -222,7 +266,10 @@ struct BranchSummary {
 fn create_and_use_branch(repo: &git2::Repository, branch_name: String) -> Result<()> {
     let master_branch = repo.refname_to_id("refs/heads/master")?;
     let master_commit = repo.find_commit(master_branch)?;
-    if repo.find_branch(&branch_name, git2::BranchType::Local).is_err() {
+    if repo
+        .find_branch(&branch_name, git2::BranchType::Local)
+        .is_err()
+    {
         let _ = repo.branch(&branch_name, &master_commit, false)?;
     }
     // let ref_name = reference.name()?.ok_or_else(|| anyhow!("Couldn't get new branch reference"))?;
@@ -232,18 +279,32 @@ fn create_and_use_branch(repo: &git2::Repository, branch_name: String) -> Result
     Ok(())
 }
 
+// Done for Git side effects
+fn checkout_branch(repo: &git2::Repository, branch_name: String) -> Result<()> {
+    let refname = format!("refs/heads/{}", branch_name);
+    repo.set_head(&refname)?;
+
+    Ok(())
+}
+
 fn matching_branches(repo: &git2::Repository, branch_name: String) -> Result<Vec<BranchSummary>> {
     let branches = repo.branches(Some(git2::BranchType::Local))?;
-    Ok(branches.filter_map(|branch| {
-        if let Ok((branch, branch_type)) = branch {
-            let name = branch.name().unwrap_or(None).unwrap_or("Invalid Branch").to_string();
-            if name.starts_with(&branch_name) {
-                Some(BranchSummary{name: name})
+    Ok(branches
+        .filter_map(|branch| {
+            if let Ok((branch, branch_type)) = branch {
+                let name = branch
+                    .name()
+                    .unwrap_or(None)
+                    .unwrap_or("Invalid Branch")
+                    .to_string();
+                if name.starts_with(&branch_name) {
+                    Some(BranchSummary { name: name })
+                } else {
+                    None
+                }
             } else {
                 None
             }
-        } else {
-            None
-        }
-    }).collect())
+        })
+        .collect())
 }
