@@ -2,7 +2,7 @@
 
 Do you waste time figuring out the key for Jira tickets you're working on so that you can reference them in your branch names? Then this tool is for you!
 
-## Usage
+## Install
 
 Install Rust. [`rustup` is the easiest way to do that.](https://rustup.rs/)
 
@@ -22,3 +22,13 @@ export JIRA_PASS=<create a token>
 ```
 
 It's recommended that you create an API token in order to use the API, you can create an API token [here](https://id.atlassian.com/manage-profile/security/api-tokens)
+
+## Usage
+
+Installation above should place a new binary on your path named `git-branch-from-jira`. This means that we can use this app directly from git!
+
+```
+git branch-from-jira
+```
+
+You might also want to add a git alias to make this quicker to type!
