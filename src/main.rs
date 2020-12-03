@@ -317,13 +317,14 @@ struct BranchSummary {
 
 // Done for Git side effects
 fn create_and_use_branch(repo: &git2::Repository, branch_name: String) -> Result<()> {
-    let master_branch = repo.refname_to_id("refs/heads/master")?;
-    let master_commit = repo.find_commit(master_branch)?;
+
+    let main_branch = repo.refname_to_id("refs/heads/main")?;
+    let main_commit = repo.find_commit(main_branch)?;
     if repo
         .find_branch(&branch_name, git2::BranchType::Local)
         .is_err()
     {
-        let _ = repo.branch(&branch_name, &master_commit, false)?;
+        let _ = repo.branch(&branch_name, &main_commit, false)?;
     }
     // let ref_name = reference.name()?.ok_or_else(|| anyhow!("Couldn't get new branch reference"))?;
     let refname = format!("refs/heads/{}", branch_name);
