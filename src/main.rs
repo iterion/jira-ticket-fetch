@@ -135,12 +135,6 @@ fn main() -> Result<()> {
                                         // TODO more efficient comparison
                                         if name == "Create New".to_string() {
                                             app.input_mode = InputMode::Editing
-                                        // if let Some(key) = app.selected_issue_key() {
-                                        //     match create_and_use_branch(&repo, key) {
-                                        //         Ok(_) => break,
-                                        //         Err(e) => println!("Error setting branch: {:?}", e),
-                                        //     }
-                                        // }
                                         } else {
                                             match checkout_branch(&repo, name) {
                                                 Ok(_) => break,
@@ -185,25 +179,25 @@ fn main() -> Result<()> {
                             _ => {}
                         }
                     }
-                    InputMode::Editing => {
-                        match input {
-                            Key::Char('\n') => {
-                                // app.messages.push(app.input.drain(..).collect());
-                                break;
+                    InputMode::Editing => match input {
+                        Key::Char('\n') => {
+                            match create_and_use_branch(&repo, app.new_branch_name()) {
+                                Ok(_) => break,
+                                Err(e) => println!("Error setting branch: {:?}", e),
                             }
-                            Key::Char(c) => {
-                                app.input.push(c);
-                            }
-                            Key::Backspace => {
-                                app.input.pop();
-                            }
-                            Key::Esc => {
-                                app.input_mode = InputMode::Normal;
-                                events.enable_exit_key();
-                            }
-                            _ => {}
                         }
-                    }
+                        Key::Char(c) => {
+                            app.input.push(c);
+                        }
+                        Key::Backspace => {
+                            app.input.pop();
+                        }
+                        Key::Esc => {
+                            app.input_mode = InputMode::Normal;
+                            events.enable_exit_key();
+                        }
+                        _ => {}
+                    },
                 }
             }
             Event::Tick => {}
