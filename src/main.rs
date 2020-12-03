@@ -43,6 +43,11 @@ fn main() -> Result<()> {
     // Initialize TUI App
     let mut app = App::from_issues(issues);
 
+    // Select the first if it exists
+    app.issues.next();
+    // And, populate the branches
+    app.find_relevant_branches(&repo);
+
     loop {
         terminal.draw(|f| {
             let chunks = Layout::default()
