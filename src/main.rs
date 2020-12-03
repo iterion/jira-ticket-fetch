@@ -139,7 +139,8 @@ fn main() -> Result<()> {
                                     if let Some(name) = app.selected_branch_name() {
                                         // TODO more efficient comparison
                                         if name == "Create New".to_string() {
-                                            app.input_mode = InputMode::Editing
+                                            app.input_mode = InputMode::Editing;
+                                            events.disable_exit_key();
                                         } else {
                                             match checkout_branch(&repo, name) {
                                                 Ok(_) => break,
