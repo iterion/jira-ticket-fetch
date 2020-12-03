@@ -50,6 +50,15 @@ impl<T> StatefulList<T> {
         self.state.select(Some(i));
     }
 
+    // pub fn get_selected(&mut self) -> Option<T> {
+    //     match self.state.selected() {
+    //         Some(i) => {
+    //             Some(self.items[i])
+    //         },
+    //         None => None,
+    //     }
+    // }
+
     pub fn unselect(&mut self) {
         self.state.select(None);
     }

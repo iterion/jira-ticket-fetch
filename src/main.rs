@@ -14,9 +14,9 @@ use std::{env, io};
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
 use tui::{
     backend::TermionBackend,
-    layout::{Constraint, Corner, Direction, Layout},
+    layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
-    text::{Span, Spans},
+    text::{Spans},
     widgets::{Block, Borders, List, ListItem},
     Terminal,
 };
@@ -31,10 +31,6 @@ fn main() -> Result<()> {
 
     let repo = get_current_repo()?;
 
-    let master_branch = repo.refname_to_id("refs/heads/master")?;
-    let master_commit = repo.find_commit(master_branch)?;
-    // println!("{:?}", repo.state());
-    repo.branch("test-branch", &master_commit, false)?;
     let issues = get_current_issues()?;
 
     // Initialize TUI Events
@@ -49,24 +45,54 @@ fn main() -> Result<()> {
                 .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
                 .split(f.size());
 
-            let items: Vec<ListItem> = app
-                .items
+            let issues: Vec<ListItem> = app
+                .issues
                 .items
                 .iter()
                 .map(|i| {
-                    let lines = vec![Spans::from(i.key.clone())];
+                    let line_content = format!("{}: {}", i.key, i.summary);
+                    let lines = vec![Spans::from(line_content)];
                     ListItem::new(lines).style(Style::default().fg(Color::Black).bg(Color::White))
                 })
                 .collect();
-            let items = List::new(items)
-                .block(Block::default().borders(Borders::ALL).title("In Progress Jira Issues"))
+            let issues = List::new(issues)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("In Progress Jira Issues"),
+                )
                 .highlight_style(
                     Style::default()
                         .bg(Color::LightGreen)
                         .add_modifier(Modifier::BOLD),
                 )
                 .highlight_symbol(">> ");
-            f.render_stateful_widget(items, chunks[0], &mut app.items.state);
+
+            let branches: Vec<ListItem> = app
+                .branches
+                .items
+                .iter()
+                .map(|i| {
+                    let line_content = format!("{}", i.name);
+                    let lines = vec![Spans::from(line_content)];
+                    ListItem::new(lines).style(Style::default().fg(Color::Black).bg(Color::White))
+                })
+                .collect();
+            let branches = List::new(branches)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Existing Branches"),
+                )
+                .highlight_style(
+                    Style::default()
+                        .bg(Color::LightGreen)
+                        .add_modifier(Modifier::BOLD),
+                )
+                .highlight_symbol(">> ");
+
+            f.render_stateful_widget(issues, chunks[0], &mut app.issues.state);
+            f.render_stateful_widget(branches, chunks[1], &mut app.branches.state);
         })?;
 
         match events.next()? {
@@ -74,19 +100,29 @@ fn main() -> Result<()> {
                 Key::Char('q') => {
                     break;
                 }
+                Key::Char('\n') => {
+                    if let Some(key) = app.selected_issue_key() {
+                        match create_and_use_branch(&repo, key) {
+                            Ok(_) => break,
+                            Err(e) => println!("Error setting branch: {:?}", e),
+                        }
+                    }
+                }
                 Key::Left => {
-                    app.items.unselect();
+                    app.issues.unselect();
+                    app.find_relevant_branches(&repo);
                 }
                 Key::Down => {
-                    app.items.next();
+                    app.issues.next();
+                    app.find_relevant_branches(&repo);
                 }
                 Key::Up => {
-                    app.items.previous();
+                    app.issues.previous();
+                    app.find_relevant_branches(&repo);
                 }
                 _ => {}
             },
             Event::Tick => {
-                // app.advance();
             }
         }
     }
@@ -109,11 +145,16 @@ fn get_current_issues() -> Result<Vec<IssueSummary>> {
 
     let issues = match jira.search().iter(query, &Default::default()) {
         Ok(results) => {
-            results.map(|issue| {
-                // println!("{:#?}", issue.key);
-                // println!("{:#?}", issue.status());
-                IssueSummary{key: issue.key, status_name: "In Progress".to_string()}
-            }).collect()
+            results
+                .map(|issue| {
+                    // println!("{:#?}", issue.status());
+                    let summary = issue.summary().unwrap_or("No summary given".to_string());
+                    IssueSummary {
+                        key: issue.key,
+                        summary: summary,
+                    }
+                })
+                .collect()
         }
         Err(err) => panic!("{:#?}", err),
     };
@@ -134,21 +175,75 @@ fn get_jira_client() -> Result<Jira> {
 }
 
 struct App {
-    items: StatefulList<IssueSummary>,
+    issues: StatefulList<IssueSummary>,
+    branches: StatefulList<BranchSummary>,
 }
 
 impl App {
     fn from_issues(issues: Vec<IssueSummary>) -> App {
         App {
-            items: StatefulList::with_items(issues)
-            // items: StatefulList::with_items(vec![
-            //     IssueSummary{key: "Test".to_string(), status_name: "In Progress".to_string()},
-            // ]),
+            issues: StatefulList::with_items(issues),
+            branches: StatefulList::new(),
         }
+    }
+
+    fn selected_issue_key(&self) -> Option<String> {
+        match self.issues.state.selected() {
+            Some(i) => {
+                Some(self.issues.items[i].key.clone())
+            },
+            None => None
+        }
+    }
+
+    fn find_relevant_branches(&mut self, repo: &git2::Repository) -> Result<()> {
+        // Clear out current listed branches
+        self.branches.items.clear();
+        if let Some(key) = self.selected_issue_key() {
+            let branches = matching_branches(repo, key)?;
+            self.branches.items = branches;
+            self.branches.items.push(BranchSummary{name: "Create New".to_string()});
+        };
+
+        Ok(())
     }
 }
 
 struct IssueSummary {
     key: String,
-    status_name: String,
+    summary: String,
+}
+
+struct BranchSummary {
+    name: String,
+}
+
+// Done for Git side effects
+fn create_and_use_branch(repo: &git2::Repository, branch_name: String) -> Result<()> {
+    let master_branch = repo.refname_to_id("refs/heads/master")?;
+    let master_commit = repo.find_commit(master_branch)?;
+    if repo.find_branch(&branch_name, git2::BranchType::Local).is_err() {
+        let _ = repo.branch(&branch_name, &master_commit, false)?;
+    }
+    // let ref_name = reference.name()?.ok_or_else(|| anyhow!("Couldn't get new branch reference"))?;
+    let refname = format!("refs/heads/{}", branch_name);
+    repo.set_head(&refname)?;
+
+    Ok(())
+}
+
+fn matching_branches(repo: &git2::Repository, branch_name: String) -> Result<Vec<BranchSummary>> {
+    let branches = repo.branches(Some(git2::BranchType::Local))?;
+    Ok(branches.filter_map(|branch| {
+        if let Ok((branch, branch_type)) = branch {
+            let name = branch.name().unwrap_or(None).unwrap_or("Invalid Branch").to_string();
+            if name.starts_with(&branch_name) {
+                Some(BranchSummary{name: name})
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }).collect())
 }
