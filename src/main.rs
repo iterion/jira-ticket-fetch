@@ -45,8 +45,8 @@ fn main() -> Result<()> {
 
     // Select the first if it exists
     app.issues.next();
-    // And, populate the branches
-    app.find_relevant_branches(&repo);
+    // TODO add an error view and surface them if they occur
+    let _ = app.find_relevant_branches(&repo);
 
     loop {
         terminal.draw(|f| {
@@ -160,7 +160,8 @@ fn main() -> Result<()> {
                             Key::Left => {
                                 if app.issues_focused {
                                     app.issues.unselect();
-                                    app.find_relevant_branches(&repo);
+                                    // TODO add an error view and surface them if they occur
+                                    let _ = app.find_relevant_branches(&repo);
                                 } else {
                                     app.branches.unselect();
                                     app.issues_focused = true;
@@ -169,7 +170,8 @@ fn main() -> Result<()> {
                             Key::Down => {
                                 if app.issues_focused {
                                     app.issues.next();
-                                    app.find_relevant_branches(&repo);
+                                    // TODO add an error view and surface them if they occur
+                                    let _ = app.find_relevant_branches(&repo);
                                 } else {
                                     app.branches.next();
                                 }
@@ -177,7 +179,8 @@ fn main() -> Result<()> {
                             Key::Up => {
                                 if app.issues_focused {
                                     app.issues.previous();
-                                    app.find_relevant_branches(&repo);
+                                    // TODO add an error view and surface them if they occur
+                                    let _ = app.find_relevant_branches(&repo);
                                 } else {
                                     app.branches.previous();
                                 }
@@ -323,8 +326,8 @@ struct BranchSummary {
 
 // Done for Git side effects
 fn create_and_use_branch(repo: &git2::Repository, branch_name: String) -> Result<()> {
-
-    let main_branch = repo.refname_to_id("refs/heads/main")?;
+    let default_branch = get_default_branch(repo);
+    let main_branch = repo.refname_to_id(&format!("refs/heads/{}", default_branch))?;
     let main_commit = repo.find_commit(main_branch)?;
     if repo
         .find_branch(&branch_name, git2::BranchType::Local)
@@ -339,6 +342,18 @@ fn create_and_use_branch(repo: &git2::Repository, branch_name: String) -> Result
     Ok(())
 }
 
+// Try to find a default branch based on the origin, if no origin remote exists or anything else
+// happens, assume `main`.
+fn get_default_branch(repo: &git2::Repository) -> String {
+    match repo.find_remote("origin") {
+        Ok(remote) => match remote.default_branch() {
+            Ok(buf) => buf.as_str().unwrap_or("main").to_string(),
+            Err(_) => "main".to_string(),
+        },
+        Err(_) => "main".to_string(),
+    }
+}
+
 // Done for Git side effects
 fn checkout_branch(repo: &git2::Repository, branch_name: String) -> Result<()> {
     let refname = format!("refs/heads/{}", branch_name);
@@ -351,7 +366,7 @@ fn matching_branches(repo: &git2::Repository, branch_name: String) -> Result<Vec
     let branches = repo.branches(Some(git2::BranchType::Local))?;
     Ok(branches
         .filter_map(|branch| {
-            if let Ok((branch, branch_type)) = branch {
+            if let Ok((branch, _branch_type)) = branch {
                 let name = branch
                     .name()
                     .unwrap_or(None)
