@@ -1,16 +1,19 @@
 # Jira => Git Branch helper
 
-Do you waste time figuring out the name of Jira tickets you're working on so that you can reference them in your branch names? Then this tool is for you!
+Do you waste time figuring out the key for Jira tickets you're working on so that you can reference them in your branch names? Then this tool is for you!
 
-## Usage (for now)
+## Usage
 
 Install Rust. [`rustup` is the easiest way to do that.](https://rustup.rs/)
 
-Then, clone this repo and run `cargo run`.
+Then, clone this repo and run: 
+```
+cargo install --path .
+```
 
-TODO, published binaries coming soon.
+Published binaries coming soon!
 
-You'll also need to export some env vars so that you can connect to Jira:
+Finally, you'll also need to export some env vars so that you can connect to Jira:
 
 ```
 export JIRA_HOST=https://zapierorg.atlassian.net
