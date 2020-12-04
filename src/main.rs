@@ -8,7 +8,7 @@ use crate::utils::{
     StatefulList,
 };
 use anyhow::{anyhow, Context, Result};
-use git2::Repository;
+use git2::{Cred, RemoteCallbacks, Repository};
 use goji::{Credentials, Jira};
 use std::{env, io};
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
@@ -327,7 +327,7 @@ struct BranchSummary {
 // Done for Git side effects
 fn create_and_use_branch(repo: &git2::Repository, branch_name: String) -> Result<()> {
     let default_branch = get_default_branch(repo);
-    let main_branch = repo.refname_to_id(&format!("refs/heads/{}", default_branch))?;
+    let main_branch = repo.refname_to_id(&default_branch)?;
     let main_commit = repo.find_commit(main_branch)?;
     if repo
         .find_branch(&branch_name, git2::BranchType::Local)
@@ -335,7 +335,6 @@ fn create_and_use_branch(repo: &git2::Repository, branch_name: String) -> Result
     {
         let _ = repo.branch(&branch_name, &main_commit, false)?;
     }
-    // let ref_name = reference.name()?.ok_or_else(|| anyhow!("Couldn't get new branch reference"))?;
     let refname = format!("refs/heads/{}", branch_name);
     repo.set_head(&refname)?;
 
@@ -346,11 +345,19 @@ fn create_and_use_branch(repo: &git2::Repository, branch_name: String) -> Result
 // happens, assume `main`.
 fn get_default_branch(repo: &git2::Repository) -> String {
     match repo.find_remote("origin") {
-        Ok(remote) => match remote.default_branch() {
-            Ok(buf) => buf.as_str().unwrap_or("main").to_string(),
-            Err(_) => "main".to_string(),
-        },
-        Err(_) => "main".to_string(),
+        Ok(mut remote) => {
+            // Connect to fetch the default branch
+            // Assumes an SSH key agent is available for now
+            let mut callbacks = RemoteCallbacks::new();
+            callbacks.credentials(git_credentials_callback);
+            let _ = remote.connect_auth(git2::Direction::Fetch, Some(callbacks), None);
+            let _ = remote.disconnect();
+            match remote.default_branch() {
+                Ok(buf) => buf.as_str().unwrap_or("refs/heads/main").to_string(),
+                Err(_) => "refs/heads/main".to_string(),
+            }
+        }
+        Err(_) => "refs/heads/main".to_string(),
     }
 }
 
@@ -382,4 +389,18 @@ fn matching_branches(repo: &git2::Repository, branch_name: String) -> Result<Vec
             }
         })
         .collect())
+}
+
+pub fn git_credentials_callback(
+    _user: &str,
+    _user_from_url: Option<&str>,
+    _cred: git2::CredentialType,
+) -> Result<git2::Cred, git2::Error> {
+    let user = _user_from_url.unwrap_or("git");
+
+    if _cred.contains(git2::CredentialType::USERNAME) {
+        return git2::Cred::username(user);
+    }
+
+    Cred::ssh_key_from_agent(user)
 }
