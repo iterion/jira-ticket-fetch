@@ -16,8 +16,8 @@ Published binaries coming soon!
 Finally, you'll also need to export some env vars so that you can connect to Jira:
 
 ```
-export JIRA_HOST=https://zapierorg.atlassian.net
-export JIRA_USER=adam.sunderland@zapier.com
+export JIRA_HOST=https://yourorg.atlassian.net
+export JIRA_USER=iterion@gmail.com
 export JIRA_PASS=<create a token>
 ```
 
