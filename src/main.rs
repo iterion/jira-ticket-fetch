@@ -1,16 +1,21 @@
 extern crate git2;
 extern crate goji;
 
+mod git;
+mod jira;
 mod utils;
 
+use crate::git::{
+    checkout_branch, create_and_use_branch, get_current_repo, matching_branches, BranchSummary,
+};
+use crate::jira::{get_current_issues, IssueSummary};
 use crate::utils::{
     event::{Event, Events},
     StatefulList,
 };
-use anyhow::{anyhow, Context, Result};
-use git2::{Cred, RemoteCallbacks, Repository};
-use goji::{Credentials, Jira};
-use std::{env, io};
+use anyhow::Result;
+use git2::Repository;
+use std::io;
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
 use tui::{
     backend::TermionBackend,
@@ -22,7 +27,7 @@ use tui::{
 };
 
 enum InputMode {
-    Normal,
+    IssuesList,
     Editing,
 }
 
@@ -80,7 +85,7 @@ fn main() -> Result<()> {
             f.render_stateful_widget(issues, chunks[0], &mut app.issues.state);
 
             match app.input_mode {
-                InputMode::Normal => {
+                InputMode::IssuesList => {
                     let branches: Vec<ListItem> = app
                         .branches
                         .items
@@ -125,7 +130,7 @@ fn main() -> Result<()> {
         match events.next()? {
             Event::Input(input) => {
                 match app.input_mode {
-                    InputMode::Normal => {
+                    InputMode::IssuesList => {
                         match input {
                             Key::Char('q') => {
                                 break;
@@ -202,7 +207,7 @@ fn main() -> Result<()> {
                             app.input.pop();
                         }
                         Key::Esc => {
-                            app.input_mode = InputMode::Normal;
+                            app.input_mode = InputMode::IssuesList;
                             events.enable_exit_key();
                         }
                         _ => {}
@@ -213,51 +218,6 @@ fn main() -> Result<()> {
         }
     }
     Ok(())
-}
-
-fn get_current_repo() -> Result<Repository> {
-    let path = env::current_dir().context("Couldn't get the current directory")?;
-    // println!("{:?}", path);
-    Ok(Repository::discover(path).context("Couldn't find a git repo at the current directory")?)
-}
-
-fn get_current_issues() -> Result<Vec<IssueSummary>> {
-    let jira = get_jira_client()?;
-
-    let query = env::args()
-        .nth(1)
-        .unwrap_or("assignee=currentuser() AND status=3".to_owned());
-    // status=3 is "In Progress"
-
-    let issues = match jira.search().iter(query, &Default::default()) {
-        Ok(results) => {
-            results
-                .map(|issue| {
-                    // println!("{:#?}", issue.status());
-                    let summary = issue.summary().unwrap_or("No summary given".to_string());
-                    IssueSummary {
-                        key: issue.key,
-                        summary: summary,
-                    }
-                })
-                .collect()
-        }
-        Err(err) => panic!("{:#?}", err),
-    };
-
-    Ok(issues)
-}
-
-fn get_jira_client() -> Result<Jira> {
-    if let (Ok(host), Ok(user), Ok(pass)) = (
-        env::var("JIRA_HOST"),
-        env::var("JIRA_USER"),
-        env::var("JIRA_PASS"),
-    ) {
-        Ok(Jira::new(host, Credentials::Basic(user, pass))?)
-    } else {
-        Err(anyhow!("Missing Jira Credentials"))
-    }
 }
 
 struct App {
@@ -274,7 +234,7 @@ impl App {
             issues: StatefulList::with_items(issues),
             branches: StatefulList::new(),
             issues_focused: true,
-            input_mode: InputMode::Normal,
+            input_mode: InputMode::IssuesList,
             input: String::new(),
         }
     }
@@ -293,7 +253,7 @@ impl App {
         }
     }
 
-    fn find_relevant_branches(&mut self, repo: &git2::Repository) -> Result<()> {
+    fn find_relevant_branches(&mut self, repo: &Repository) -> Result<()> {
         // Clear out current listed branches
         self.branches.items.clear();
         if let Some(key) = self.selected_issue_key() {
@@ -313,94 +273,4 @@ impl App {
             None => "unhandled-error".to_string(),
         }
     }
-}
-
-struct IssueSummary {
-    key: String,
-    summary: String,
-}
-
-struct BranchSummary {
-    name: String,
-}
-
-// Done for Git side effects
-fn create_and_use_branch(repo: &git2::Repository, branch_name: String) -> Result<()> {
-    let default_branch = get_default_branch(repo);
-    let main_branch = repo.refname_to_id(&default_branch)?;
-    let main_commit = repo.find_commit(main_branch)?;
-    if repo
-        .find_branch(&branch_name, git2::BranchType::Local)
-        .is_err()
-    {
-        let _ = repo.branch(&branch_name, &main_commit, false)?;
-    }
-    let refname = format!("refs/heads/{}", branch_name);
-    repo.set_head(&refname)?;
-
-    Ok(())
-}
-
-// Try to find a default branch based on the origin, if no origin remote exists or anything else
-// happens, assume `main`.
-fn get_default_branch(repo: &git2::Repository) -> String {
-    match repo.find_remote("origin") {
-        Ok(mut remote) => {
-            // Connect to fetch the default branch
-            // Assumes an SSH key agent is available for now
-            let mut callbacks = RemoteCallbacks::new();
-            callbacks.credentials(git_credentials_callback);
-            let _ = remote.connect_auth(git2::Direction::Fetch, Some(callbacks), None);
-            let _ = remote.disconnect();
-            match remote.default_branch() {
-                Ok(buf) => buf.as_str().unwrap_or("refs/heads/main").to_string(),
-                Err(_) => "refs/heads/main".to_string(),
-            }
-        }
-        Err(_) => "refs/heads/main".to_string(),
-    }
-}
-
-// Done for Git side effects
-fn checkout_branch(repo: &git2::Repository, branch_name: String) -> Result<()> {
-    let refname = format!("refs/heads/{}", branch_name);
-    repo.set_head(&refname)?;
-
-    Ok(())
-}
-
-fn matching_branches(repo: &git2::Repository, branch_name: String) -> Result<Vec<BranchSummary>> {
-    let branches = repo.branches(Some(git2::BranchType::Local))?;
-    Ok(branches
-        .filter_map(|branch| {
-            if let Ok((branch, _branch_type)) = branch {
-                let name = branch
-                    .name()
-                    .unwrap_or(None)
-                    .unwrap_or("Invalid Branch")
-                    .to_string();
-                if name.starts_with(&branch_name) {
-                    Some(BranchSummary { name: name })
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        })
-        .collect())
-}
-
-pub fn git_credentials_callback(
-    _user: &str,
-    _user_from_url: Option<&str>,
-    _cred: git2::CredentialType,
-) -> Result<git2::Cred, git2::Error> {
-    let user = _user_from_url.unwrap_or("git");
-
-    if _cred.contains(git2::CredentialType::USERNAME) {
-        return git2::Cred::username(user);
-    }
-
-    Cred::ssh_key_from_agent(user)
 }
