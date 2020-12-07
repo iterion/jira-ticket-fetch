@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use goji::{Credentials, Jira};
 use std::env;
 
+// #[derive(Serialize, Deserialize, Debug)]
 pub struct IssueSummary {
     pub key: String,
     pub summary: String,

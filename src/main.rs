@@ -1,9 +1,15 @@
+extern crate app_dirs;
 extern crate git2;
 extern crate goji;
 
 mod git;
 mod jira;
 mod utils;
+
+const APP_INFO: AppInfo = AppInfo {
+    name: "jira-tui",
+    author: "iterion",
+};
 
 use crate::git::{
     checkout_branch, create_and_use_branch, get_current_repo, matching_branches, BranchSummary,
@@ -14,15 +20,16 @@ use crate::utils::{
     StatefulList,
 };
 use anyhow::Result;
+use app_dirs::*;
 use git2::Repository;
 use std::io;
 use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
 use tui::{
     backend::TermionBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::Spans,
-    widgets::{Block, Borders, List, ListItem, Paragraph},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
     Terminal,
 };
 
@@ -55,10 +62,22 @@ fn main() -> Result<()> {
 
     loop {
         terminal.draw(|f| {
+            let size = f.size();
+
+            let help_drawer = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Min(10), Constraint::Length(2)])
+                .split(size);
+
+            let help = Paragraph::new("Arrows: Navigate - Enter: Select")
+                        .style(Style::default().fg(Color::White))
+                        .block( Block::default().borders(Borders::NONE));
+            f.render_widget(help, help_drawer[1]);
+
             let chunks = Layout::default()
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
-                .split(f.size());
+                .split(help_drawer[0]);
 
             let issues: Vec<ListItem> = app
                 .issues
@@ -84,46 +103,51 @@ fn main() -> Result<()> {
                 .highlight_symbol(">> ");
             f.render_stateful_widget(issues, chunks[0], &mut app.issues.state);
 
+            let branches: Vec<ListItem> = app
+                .branches
+                .items
+                .iter()
+                .map(|i| {
+                    let line_content = format!("{}", i.name);
+                    let lines = vec![Spans::from(line_content)];
+                    ListItem::new(lines).style(Style::default().fg(Color::Black).bg(Color::White))
+                })
+                .collect();
+            let branches = List::new(branches)
+                .block(
+                    Block::default()
+                        .borders(Borders::ALL)
+                        .title("Existing Branches"),
+                )
+                .highlight_style(
+                    Style::default()
+                        .bg(Color::LightGreen)
+                        .add_modifier(Modifier::BOLD),
+                )
+                .highlight_symbol(">> ");
+
+            f.render_stateful_widget(branches, chunks[1], &mut app.branches.state);
+
             match app.input_mode {
-                InputMode::IssuesList => {
-                    let branches: Vec<ListItem> = app
-                        .branches
-                        .items
-                        .iter()
-                        .map(|i| {
-                            let line_content = format!("{}", i.name);
-                            let lines = vec![Spans::from(line_content)];
-                            ListItem::new(lines)
-                                .style(Style::default().fg(Color::Black).bg(Color::White))
-                        })
-                        .collect();
-                    let branches = List::new(branches)
+                InputMode::Editing => {
+                    let area = centered_rect(60, 20, size);
+                    let input = Paragraph::new(app.new_branch_name().clone())
+                        .style(Style::default().fg(Color::Yellow))
                         .block(
                             Block::default()
                                 .borders(Borders::ALL)
-                                .title("Existing Branches"),
-                        )
-                        .highlight_style(
-                            Style::default()
-                                .bg(Color::LightGreen)
-                                .add_modifier(Modifier::BOLD),
-                        )
-                        .highlight_symbol(">> ");
-
-                    f.render_stateful_widget(branches, chunks[1], &mut app.branches.state);
-                }
-                InputMode::Editing => {
-                    let input = Paragraph::new(app.new_branch_name().clone())
-                        .style(Style::default().fg(Color::Yellow))
-                        .block(Block::default().borders(Borders::ALL).title("Input"));
-                    f.render_widget(input, chunks[1]);
+                                .title("Enter new branch name"),
+                        );
+                    f.render_widget(Clear, area);
+                    f.render_widget(input, area);
                     f.set_cursor(
                         // Put cursor past the end of the input text
-                        chunks[1].x + app.new_branch_name().len() as u16 + 1,
+                        area.x + app.new_branch_name().len() as u16 + 1,
                         // Move one line down, from the border to the input line
-                        chunks[1].y + 1,
+                        area.y + 1,
                     )
                 }
+                _ => (),
             }
         })?;
 
@@ -273,4 +297,36 @@ impl App {
             None => "unhandled-error".to_string(),
         }
     }
+
+    // fn get_jira_cache_file(&self) -> Result<PathBuf> {
+    //     let mut dir = app_dir(AppDataType::UserCache, &APP_INFO, "cache/")?;
+    //     dir.push("jira.json");
+    //     Ok(dir)
+    // }
+}
+
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(
+            [
+                Constraint::Percentage((100 - percent_y) / 2),
+                Constraint::Percentage(percent_y),
+                Constraint::Percentage((100 - percent_y) / 2),
+            ]
+            .as_ref(),
+        )
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints(
+            [
+                Constraint::Percentage((100 - percent_x) / 2),
+                Constraint::Percentage(percent_x),
+                Constraint::Percentage((100 - percent_x) / 2),
+            ]
+            .as_ref(),
+        )
+        .split(popup_layout[1])[1]
 }

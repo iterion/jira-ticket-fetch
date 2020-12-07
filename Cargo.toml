@@ -11,6 +11,7 @@ goji = "0.2"
 git2 = "0.13"
 anyhow = "1.0.34"
 tui = "0.13.0"
+app_dirs = "1.2.1"
 termion = "1.5.5"
 
 [[bin]]
