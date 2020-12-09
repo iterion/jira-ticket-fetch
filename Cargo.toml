@@ -10,9 +10,9 @@ edition = "2018"
 goji = "0.2"
 git2 = "0.13"
 anyhow = "1.0.34"
-tui = "0.13.0"
+tui = { version = "0.13.0", features = ["crossterm"] }
 app_dirs = "1.2.1"
-termion = "1.5.5"
+crossterm = "0.18"
 
 [[bin]]
 name = "git-branch-from-jira"

@@ -16,16 +16,26 @@ use crate::git::{
 };
 use crate::jira::{get_current_issues, IssueSummary};
 use crate::utils::{
-    event::{Event, Events},
+    event::Event,
     StatefulList,
 };
-use anyhow::Result;
+use anyhow::{bail, Result};
 use app_dirs::*;
+use crossterm::{
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event as CEvent, KeyCode, KeyEvent},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
 use git2::Repository;
-use std::io;
-use termion::{event::Key, input::MouseTerminal, raw::IntoRawMode, screen::AlternateScreen};
+use std::{
+    error::Error,
+    io::{stdout, Write},
+    sync::mpsc,
+    thread,
+    time::{Duration, Instant},
+};
 use tui::{
-    backend::TermionBackend,
+    backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::Spans,
@@ -40,25 +50,45 @@ enum InputMode {
 
 fn main() -> Result<()> {
     // Terminal initialization
-    let stdout = io::stdout().into_raw_mode()?;
-    let stdout = MouseTerminal::from(stdout);
-    let stdout = AlternateScreen::from(stdout);
-    let backend = TermionBackend::new(stdout);
+    enable_raw_mode()?;
+
+    let mut stdout = stdout();
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+
+    let backend = CrosstermBackend::new(stdout);
+
     let mut terminal = Terminal::new(backend)?;
 
-    let repo = get_current_repo()?;
+    // Setup input handling
+    let (tx, rx) = mpsc::channel();
 
-    let issues = get_current_issues()?;
+    let tick_rate = Duration::from_millis(250);
+    thread::spawn(move || {
+        let mut last_tick = Instant::now();
+        loop {
+            // poll for tick rate duration, if no events, sent tick event.
+            let timeout = tick_rate
+                .checked_sub(last_tick.elapsed())
+                .unwrap_or_else(|| Duration::from_secs(0));
+            if event::poll(timeout).unwrap() {
+                if let CEvent::Key(key) = event::read().unwrap() {
+                    tx.send(Event::Input(key)).unwrap();
+                }
+            }
+            if last_tick.elapsed() >= tick_rate {
+                tx.send(Event::Tick).unwrap();
+                last_tick = Instant::now();
+            }
+        }
+    });
 
-    // Initialize TUI Events
-    let mut events = Events::new();
     // Initialize TUI App
-    let mut app = App::from_issues(issues);
+    let mut app = App::from_issues_and_repo(get_current_issues()?, get_current_repo()?);
 
     // Select the first if it exists
     app.issues.next();
     // TODO add an error view and surface them if they occur
-    let _ = app.find_relevant_branches(&repo);
+    let _ = app.find_relevant_branches();
 
     loop {
         terminal.draw(|f| {
@@ -70,8 +100,8 @@ fn main() -> Result<()> {
                 .split(size);
 
             let help = Paragraph::new("Arrows: Navigate - Enter: Select")
-                        .style(Style::default().fg(Color::White))
-                        .block( Block::default().borders(Borders::NONE));
+                .style(Style::default().fg(Color::White))
+                .block(Block::default().borders(Borders::NONE));
             f.render_widget(help, help_drawer[1]);
 
             let chunks = Layout::default()
@@ -151,93 +181,19 @@ fn main() -> Result<()> {
             }
         })?;
 
-        match events.next()? {
+        match rx.recv()? {
             Event::Input(input) => {
-                match app.input_mode {
-                    InputMode::IssuesList => {
-                        match input {
-                            Key::Char('q') => {
-                                break;
-                            }
-                            Key::Char('\n') => {
-                                if app.issues_focused {
-                                    // Focus on first branch
-                                    app.branches.next();
-                                    app.issues_focused = false;
-                                } else {
-                                    if let Some(name) = app.selected_branch_name() {
-                                        // TODO more efficient comparison
-                                        if name == "Create New".to_string() {
-                                            app.input_mode = InputMode::Editing;
-                                            events.disable_exit_key();
-                                        } else {
-                                            match checkout_branch(&repo, name) {
-                                                Ok(_) => break,
-                                                Err(e) => println!("Error setting branch: {:?}", e),
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            Key::Right => {
-                                if app.issues_focused && app.selected_issue_key().is_some() {
-                                    // Focus on first branch
-                                    app.branches.next();
-                                    app.issues_focused = false;
-                                }
-                            }
-                            Key::Left => {
-                                if app.issues_focused {
-                                    app.issues.unselect();
-                                    // TODO add an error view and surface them if they occur
-                                    let _ = app.find_relevant_branches(&repo);
-                                } else {
-                                    app.branches.unselect();
-                                    app.issues_focused = true;
-                                }
-                            }
-                            Key::Down => {
-                                if app.issues_focused {
-                                    app.issues.next();
-                                    // TODO add an error view and surface them if they occur
-                                    let _ = app.find_relevant_branches(&repo);
-                                } else {
-                                    app.branches.next();
-                                }
-                            }
-                            Key::Up => {
-                                if app.issues_focused {
-                                    app.issues.previous();
-                                    // TODO add an error view and surface them if they occur
-                                    let _ = app.find_relevant_branches(&repo);
-                                } else {
-                                    app.branches.previous();
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    InputMode::Editing => match input {
-                        Key::Char('\n') => {
-                            match create_and_use_branch(&repo, app.new_branch_name()) {
-                                Ok(_) => break,
-                                Err(e) => println!("Error setting branch: {:?}", e),
-                            }
-                        }
-                        Key::Char(c) => {
-                            app.input.push(c);
-                        }
-                        Key::Backspace => {
-                            app.input.pop();
-                        }
-                        Key::Esc => {
-                            app.input_mode = InputMode::IssuesList;
-                            events.enable_exit_key();
-                        }
-                        _ => {}
-                    },
+                if app.handle_input(input).is_err() {
+                    disable_raw_mode()?;
+                    execute!(
+                        terminal.backend_mut(),
+                        LeaveAlternateScreen,
+                        DisableMouseCapture
+                    )?;
+                    terminal.show_cursor()?;
+                    break;
                 }
-            }
+            },
             Event::Tick => {}
         }
     }
@@ -250,16 +206,18 @@ struct App {
     issues_focused: bool,
     input_mode: InputMode,
     input: String,
+    repo: Repository,
 }
 
 impl App {
-    fn from_issues(issues: Vec<IssueSummary>) -> App {
+    fn from_issues_and_repo(issues: Vec<IssueSummary>, repo: Repository) -> App {
         App {
             issues: StatefulList::with_items(issues),
             branches: StatefulList::new(),
             issues_focused: true,
             input_mode: InputMode::IssuesList,
             input: String::new(),
+            repo: repo,
         }
     }
 
@@ -277,11 +235,11 @@ impl App {
         }
     }
 
-    fn find_relevant_branches(&mut self, repo: &Repository) -> Result<()> {
+    fn find_relevant_branches(&mut self) -> Result<()> {
         // Clear out current listed branches
         self.branches.items.clear();
         if let Some(key) = self.selected_issue_key() {
-            let branches = matching_branches(repo, key)?;
+            let branches = matching_branches(&self.repo, key)?;
             self.branches.items = branches;
             self.branches.items.push(BranchSummary {
                 name: "Create New".to_string(),
@@ -303,6 +261,88 @@ impl App {
     //     dir.push("jira.json");
     //     Ok(dir)
     // }
+    fn handle_input(&mut self, input: KeyEvent) -> Result<()> {
+        match self.input_mode {
+            InputMode::IssuesList => {
+                match input.code {
+                    KeyCode::Char('q') => bail!("Just exiting early"),
+                    KeyCode::Enter => {
+                        if self.issues_focused {
+                            // Focus on first branch
+                            self.branches.next();
+                            self.issues_focused = false;
+                        } else {
+                            if let Some(name) = self.selected_branch_name() {
+                                // TODO more efficient comparison
+                                if name == "Create New".to_string() {
+                                    self.input_mode = InputMode::Editing;
+                                } else {
+                                    match checkout_branch(&self.repo, name) {
+                                        Ok(_) => bail!("Done!"),
+                                        Err(e) => println!("Error setting branch: {:?}", e),
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    KeyCode::Right => {
+                        if self.issues_focused && self.selected_issue_key().is_some() {
+                            // Focus on first branch
+                            self.branches.next();
+                            self.issues_focused = false;
+                        }
+                    }
+                    KeyCode::Left => {
+                        if self.issues_focused {
+                            self.issues.unselect();
+                            // TODO add an error view and surface them if they occur
+                            let _ = self.find_relevant_branches();
+                        } else {
+                            self.branches.unselect();
+                            self.issues_focused = true;
+                        }
+                    }
+                    KeyCode::Down => {
+                        if self.issues_focused {
+                            self.issues.next();
+                            // TODO add an error view and surface them if they occur
+                            let _ = self.find_relevant_branches();
+                        } else {
+                            self.branches.next();
+                        }
+                    }
+                    KeyCode::Up => {
+                        if self.issues_focused {
+                            self.issues.previous();
+                            // TODO add an error view and surface them if they occur
+                            let _ = self.find_relevant_branches();
+                        } else {
+                            self.branches.previous();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            InputMode::Editing => match input.code {
+                KeyCode::Enter => match create_and_use_branch(&self.repo, self.new_branch_name()) {
+                    Ok(_) => bail!("Done!"),
+                    Err(e) => println!("Error setting branch: {:?}", e),
+                },
+                KeyCode::Char(c) => {
+                    self.input.push(c);
+                }
+                KeyCode::Backspace => {
+                    self.input.pop();
+                }
+                KeyCode::Esc => {
+                    self.input_mode = InputMode::IssuesList;
+                    // events.enable_exit_key();
+                }
+                _ => {}
+            },
+        }
+        Ok(())
+    }
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
