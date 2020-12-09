@@ -1,11 +1,11 @@
-use crate::app::{InputMode, App};
+use crate::app::{App, InputMode};
 use tui::{
-    backend::{Backend},
+    backend::Backend,
     layout::{Constraint, Direction, Layout, Rect},
-    Frame,
     style::{Color, Modifier, Style},
     text::Spans,
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
+    Frame,
 };
 
 pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
@@ -30,9 +30,7 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     draw_branches(f, app, chunks[1]);
 
     match app.input_mode {
-        InputMode::Editing => {
-            draw_branch_input(f, app, size);
-        }
+        InputMode::Editing => draw_branch_input(f, app, size),
         _ => (),
     }
 }
@@ -91,22 +89,22 @@ fn draw_branches<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
 }
 
 fn draw_branch_input<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
-            let area = centered_rect(60, 20, area);
-            let input = Paragraph::new(app.new_branch_name().clone())
-                .style(Style::default().fg(Color::Yellow))
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title("Enter new branch name"),
-                );
-            f.render_widget(Clear, area);
-            f.render_widget(input, area);
-            f.set_cursor(
-                // Put cursor past the end of the input text
-                area.x + app.new_branch_name().len() as u16 + 1,
-                // Move one line down, from the border to the input line
-                area.y + 1,
-            );
+    let area = centered_rect(60, 20, area);
+    let input = Paragraph::new(app.new_branch_name().clone())
+        .style(Style::default().fg(Color::Yellow))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Enter new branch name"),
+        );
+    f.render_widget(Clear, area);
+    f.render_widget(input, area);
+    f.set_cursor(
+        // Put cursor past the end of the input text
+        area.x + app.new_branch_name().len() as u16 + 1,
+        // Move one line down, from the border to the input line
+        area.y + 1,
+    );
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {

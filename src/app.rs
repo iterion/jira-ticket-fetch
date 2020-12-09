@@ -1,9 +1,7 @@
 use crate::{
-    git::{
-        checkout_branch, create_and_use_branch, matching_branches, BranchSummary,
-    },
-    jira::{IssueSummary},
-    utils::{StatefulList},
+    git::{checkout_branch, create_and_use_branch, matching_branches, BranchSummary},
+    jira::IssueSummary,
+    utils::StatefulList,
 };
 use anyhow::{bail, Result};
 use crossterm::event::{KeyCode, KeyEvent};

@@ -2,24 +2,19 @@ extern crate app_dirs;
 extern crate git2;
 extern crate goji;
 
+mod app;
 mod git;
 mod jira;
 mod ui;
 mod utils;
-mod app;
 
 const APP_INFO: AppInfo = AppInfo {
     name: "jira-tui",
     author: "iterion",
 };
 
-use crate::{
-    git::get_current_repo,
-    jira::get_current_issues,
-    utils::event::Event,
-    app::App,
-};
-use anyhow::{Result};
+use crate::{app::App, git::get_current_repo, jira::get_current_issues, utils::event::Event};
+use anyhow::Result;
 use app_dirs::*;
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture, Event as CEvent},
@@ -32,10 +27,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use tui::{
-    backend::CrosstermBackend,
-    Terminal,
-};
+use tui::{backend::CrosstermBackend, Terminal};
 
 fn main() -> Result<()> {
     // Terminal initialization
