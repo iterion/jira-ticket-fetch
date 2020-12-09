@@ -26,6 +26,18 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
         .split(help_drawer[0]);
 
+    draw_issues(f, app, chunks[0]);
+    draw_branches(f, app, chunks[1]);
+
+    match app.input_mode {
+        InputMode::Editing => {
+            draw_branch_input(f, app, size);
+        }
+        _ => (),
+    }
+}
+
+fn draw_issues<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
     let issues: Vec<ListItem> = app
         .issues
         .items
@@ -48,8 +60,10 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
                 .add_modifier(Modifier::BOLD),
         )
         .highlight_symbol(">> ");
-    f.render_stateful_widget(issues, chunks[0], &mut app.issues.state);
+    f.render_stateful_widget(issues, area, &mut app.issues.state);
+}
 
+fn draw_branches<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
     let branches: Vec<ListItem> = app
         .branches
         .items
@@ -73,11 +87,11 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         )
         .highlight_symbol(">> ");
 
-    f.render_stateful_widget(branches, chunks[1], &mut app.branches.state);
+    f.render_stateful_widget(branches, area, &mut app.branches.state);
+}
 
-    match app.input_mode {
-        InputMode::Editing => {
-            let area = centered_rect(60, 20, size);
+fn draw_branch_input<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
+            let area = centered_rect(60, 20, area);
             let input = Paragraph::new(app.new_branch_name().clone())
                 .style(Style::default().fg(Color::Yellow))
                 .block(
@@ -92,30 +106,8 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
                 area.x + app.new_branch_name().len() as u16 + 1,
                 // Move one line down, from the border to the input line
                 area.y + 1,
-            )
-        }
-        _ => (),
-    }
+            );
 }
-
-// fn draw_first_tab<B>(f: &mut Frame<B>, app: &mut App, area: Rect)
-// where
-//     B: Backend,
-// {
-//     let chunks = Layout::default()
-//         .constraints(
-//             [
-//                 Constraint::Length(9),
-//                 Constraint::Min(8),
-//                 Constraint::Length(7),
-//             ]
-//             .as_ref(),
-//         )
-//         .split(area);
-//     draw_gauges(f, app, chunks[0]);
-//     draw_charts(f, app, chunks[1]);
-//     draw_text(f, chunks[2]);
-// }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     let popup_layout = Layout::default()

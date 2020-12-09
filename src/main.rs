@@ -26,7 +26,6 @@ use crossterm::{
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-
 use std::{
     io::{stdout, Write},
     sync::mpsc,

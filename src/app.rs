@@ -6,17 +6,14 @@ use crate::{
     utils::{StatefulList},
 };
 use anyhow::{bail, Result};
-
 use crossterm::event::{KeyCode, KeyEvent};
 use git2::Repository;
-
-
-
 
 pub enum InputMode {
     IssuesList,
     Editing,
 }
+
 pub struct App {
     pub issues: StatefulList<IssueSummary>,
     pub branches: StatefulList<BranchSummary>,
