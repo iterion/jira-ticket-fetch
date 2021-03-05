@@ -57,11 +57,7 @@ fn draw_issues<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
         title = format!("{} Owned by Me", title)
     }
     let issues = List::new(issues)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(title),
-        )
+        .block(Block::default().borders(Borders::ALL).title(title))
         .highlight_style(
             Style::default()
                 .bg(Color::LightGreen)
@@ -211,4 +207,3 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         )
         .split(popup_layout[1])[1]
 }
-

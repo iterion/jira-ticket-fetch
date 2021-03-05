@@ -21,9 +21,9 @@ impl JiraClient {
         }
     }
 
-    pub fn current_issues(&self, config: &Config) -> Result<Vec<IssueSummary>> {
+    pub async fn current_issues(&self, config: &Config) -> Result<Vec<IssueSummary>> {
         // status=3 is "In Progress"
-        let mut query_parts: Vec<String> = vec!();
+        let mut query_parts: Vec<String> = vec![];
 
         if config.filter_mine {
             query_parts.push("assignee=currentuser()".to_string());
@@ -44,19 +44,22 @@ impl JiraClient {
         let issues = match self
             .jira
             .search()
-            .iter(query, &search_options_for_config(config))
+            .list(query, &search_options_for_config(config)).await
         {
             Ok(results) => {
-                results
+                results.issues
+                    .iter()
                     .map(|issue| {
                         let summary = issue.summary().unwrap_or("No summary given".to_string());
                         // let assignee_name = match issue.assignee() {
                         //    Some(u) => u.display_name,
                         //    None => "Unassigned".to_string(),
                         // };
+                        let permalink = issue.permalink(&self.jira);
                         IssueSummary {
-                            key: issue.key,
+                            key: issue.key.clone(),
                             summary,
+                            permalink,
                             // assignee_name,
                         }
                     })
@@ -68,14 +71,12 @@ impl JiraClient {
         Ok(issues)
     }
 
-    pub fn current_boards(&self, config: &Config) -> Result<Vec<BoardSummary>> {
-        let boards = match self.jira.boards().iter(&search_options_for_config(config)) {
-            Ok(results) => results
-                .map(|board| {
-                    BoardSummary {
-                        key: board.id,
-                        name: board.name,
-                    }
+    pub async fn current_boards(&self, config: &Config) -> Result<Vec<BoardSummary>> {
+        let boards = match self.jira.boards().list(&search_options_for_config(config)).await {
+            Ok(results) => results.values.iter()
+                .map(|board| BoardSummary {
+                    key: board.id,
+                    name: board.name.clone(),
                 })
                 .collect(),
             Err(err) => panic!("{:#?}", err),
@@ -89,6 +90,7 @@ impl JiraClient {
 pub struct IssueSummary {
     pub key: String,
     pub summary: String,
+    pub permalink: String,
     // pub assignee_name: String,
 }
 
@@ -96,7 +98,7 @@ fn search_options_for_config(config: &Config) -> SearchOptions {
     let mut options = SearchOptions::builder();
     options.max_results(100);
     if config.default_project_key != "" {
-      options.project_key_or_id(&config.default_project_key);
+        options.project_key_or_id(&config.default_project_key);
     }
     options.build()
 }

@@ -32,7 +32,8 @@ pub const APP_INFO: AppInfo = AppInfo {
     author: "iterion",
 };
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     // Terminal initialization
     enable_raw_mode()?;
 

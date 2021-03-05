@@ -7,6 +7,8 @@ use crate::{
 use anyhow::{bail, Result};
 use crossterm::event::{KeyCode, KeyEvent};
 use git2::Repository;
+use std::process::Command;
+use futures::executor::block_on;
 
 pub enum InputMode {
     IssuesList,
@@ -30,8 +32,8 @@ pub struct App {
 impl App {
     pub fn new(jira: JiraClient, repo: Repository) -> Result<App> {
         let config = load_config();
-        let issues = jira.current_issues(&config)?;
-        let boards = jira.current_boards(&config)?;
+        let issues = block_on(jira.current_issues(&config))?;
+        let boards = block_on(jira.current_boards(&config))?;
         Ok(App {
             issues: StatefulList::with_items(issues),
             boards: StatefulList::with_items(boards),
@@ -48,6 +50,13 @@ impl App {
     fn selected_issue_key(&self) -> Option<String> {
         match self.issues.state.selected() {
             Some(i) => Some(self.issues.items[i].key.clone()),
+            None => None,
+        }
+    }
+
+    fn selected_issue_permalink(&self) -> Option<String> {
+        match self.issues.state.selected() {
+            Some(i) => Some(self.issues.items[i].permalink.clone()),
             None => None,
         }
     }
@@ -93,12 +102,12 @@ impl App {
                         self.input_mode = InputMode::BoardsList;
                     }
                     KeyCode::Char('c') => {
-                        self.input = "".to_string();
+                        self.input = self.config.default_project_key.clone();
                         self.input_mode = InputMode::EditingDefaultProject;
                     }
                     KeyCode::Char('i') => {
                         self.config.filter_in_progress = !self.config.filter_in_progress;
-                        match self.jira.current_issues(&self.config) {
+                        match block_on(self.jira.current_issues(&self.config)) {
                             Ok(issues) => self.issues = StatefulList::with_items(issues),
                             Err(_) => {} // TODO add error view
                         }
@@ -106,11 +115,17 @@ impl App {
                     }
                     KeyCode::Char('m') => {
                         self.config.filter_mine = !self.config.filter_mine;
-                        match self.jira.current_issues(&self.config) {
+                        match block_on(self.jira.current_issues(&self.config)) {
                             Ok(issues) => self.issues = StatefulList::with_items(issues),
                             Err(_) => {} // TODO add error view
                         }
                         let _ = save_config(&self.config);
+                    }
+                    KeyCode::Char('o') => {
+                        if let Some(link) = self.selected_issue_permalink() {
+                        let _ = Command::new("open").arg(link).output();
+                        }
+
                     }
                     KeyCode::Enter => {
                         if self.issues_focused {
@@ -204,17 +219,17 @@ impl App {
                     self.config.default_project_key = self.input.to_string();
                     match save_config(&self.config) {
                         Ok(_) => {
-                        match self.jira.current_issues(&self.config) {
-                            Ok(issues) => self.issues = StatefulList::with_items(issues),
-                            Err(_) => {} // TODO add error view
-                        }
+                            match block_on(self.jira.current_issues(&self.config)) {
+                                Ok(issues) => self.issues = StatefulList::with_items(issues),
+                                Err(_) => {} // TODO add error view
+                            }
                             self.input_mode = InputMode::IssuesList;
                         }
                         Err(e) => {
                             self.input = e.to_string();
                         }
                     }
-                },
+                }
                 KeyCode::Char(c) => {
                     self.input.push(c);
                 }

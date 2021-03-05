@@ -13,7 +13,7 @@ pub struct Config {
 }
 
 impl Default for Config {
-    fn default() -> Self { 
+    fn default() -> Self {
         Config {
             default_project_key: "".to_string(),
             filter_in_progress: true,
@@ -44,7 +44,7 @@ pub fn load_config() -> Config {
         Ok(c) => c,
         Err(_) => Default::default(),
     };
-    return config
+    return config;
 }
 
 pub fn save_config(config: &Config) -> Result<()> {
