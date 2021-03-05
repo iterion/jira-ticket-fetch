@@ -66,7 +66,7 @@ pub fn matching_branches(repo: &Repository, branch_name: String) -> Result<Vec<B
                     .unwrap_or("Invalid Branch")
                     .to_string();
                 if name.starts_with(&branch_name) {
-                    Some(BranchSummary { name: name })
+                    Some(BranchSummary { name })
                 } else {
                     None
                 }
