@@ -1,4 +1,4 @@
-# Jira => Git Branch helper
+# Jira TUI
 
 Do you waste time figuring out the key for Jira tickets you're working on so that you can reference them in your branch names? Then this tool is for you!
 
