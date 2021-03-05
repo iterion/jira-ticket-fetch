@@ -8,7 +8,6 @@ use anyhow::{bail, Result};
 use crossterm::event::{KeyCode, KeyEvent};
 use git2::Repository;
 use std::process::Command;
-use futures::executor::block_on;
 
 pub enum InputMode {
     IssuesList,
@@ -30,10 +29,10 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(jira: JiraClient, repo: Repository) -> Result<App> {
+    pub async fn new(jira: JiraClient, repo: Repository) -> Result<App> {
         let config = load_config();
-        let issues = block_on(jira.current_issues(&config))?;
-        let boards = block_on(jira.current_boards(&config))?;
+        let issues = jira.current_issues(&config).await?;
+        let boards = jira.current_boards(&config).await?;
         Ok(App {
             issues: StatefulList::with_items(issues),
             boards: StatefulList::with_items(boards),
@@ -93,7 +92,7 @@ impl App {
         }
     }
 
-    pub fn handle_input(&mut self, input: KeyEvent) -> Result<()> {
+    pub async fn handle_input(&mut self, input: KeyEvent) -> Result<()> {
         match self.input_mode {
             InputMode::IssuesList => {
                 match input.code {
@@ -107,7 +106,7 @@ impl App {
                     }
                     KeyCode::Char('i') => {
                         self.config.filter_in_progress = !self.config.filter_in_progress;
-                        match block_on(self.jira.current_issues(&self.config)) {
+                        match self.jira.current_issues(&self.config).await {
                             Ok(issues) => self.issues = StatefulList::with_items(issues),
                             Err(_) => {} // TODO add error view
                         }
@@ -115,7 +114,7 @@ impl App {
                     }
                     KeyCode::Char('m') => {
                         self.config.filter_mine = !self.config.filter_mine;
-                        match block_on(self.jira.current_issues(&self.config)) {
+                        match self.jira.current_issues(&self.config).await {
                             Ok(issues) => self.issues = StatefulList::with_items(issues),
                             Err(_) => {} // TODO add error view
                         }
@@ -123,9 +122,8 @@ impl App {
                     }
                     KeyCode::Char('o') => {
                         if let Some(link) = self.selected_issue_permalink() {
-                        let _ = Command::new("open").arg(link).output();
+                            let _ = Command::new("open").arg(link).output();
                         }
-
                     }
                     KeyCode::Enter => {
                         if self.issues_focused {
@@ -219,7 +217,7 @@ impl App {
                     self.config.default_project_key = self.input.to_string();
                     match save_config(&self.config) {
                         Ok(_) => {
-                            match block_on(self.jira.current_issues(&self.config)) {
+                            match self.jira.current_issues(&self.config).await {
                                 Ok(issues) => self.issues = StatefulList::with_items(issues),
                                 Err(_) => {} // TODO add error view
                             }

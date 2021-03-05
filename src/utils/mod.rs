@@ -1,5 +1,3 @@
-pub mod event;
-
 use tui::widgets::ListState;
 
 pub struct StatefulList<T> {

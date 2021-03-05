@@ -99,6 +99,7 @@ checksum = "4e86d73f2a0b407b5768d10a8c720cf5d2df49a9efc10ca09176d201ead4b7fb"
 dependencies = [
  "bitflags",
  "crossterm_winapi",
+ "futures-core",
  "lazy_static",
  "libc",
  "mio",

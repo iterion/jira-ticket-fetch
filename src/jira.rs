@@ -44,10 +44,12 @@ impl JiraClient {
         let issues = match self
             .jira
             .search()
-            .list(query, &search_options_for_config(config)).await
+            .list(query, &search_options_for_config(config))
+            .await
         {
             Ok(results) => {
-                results.issues
+                results
+                    .issues
                     .iter()
                     .map(|issue| {
                         let summary = issue.summary().unwrap_or("No summary given".to_string());
@@ -72,8 +74,15 @@ impl JiraClient {
     }
 
     pub async fn current_boards(&self, config: &Config) -> Result<Vec<BoardSummary>> {
-        let boards = match self.jira.boards().list(&search_options_for_config(config)).await {
-            Ok(results) => results.values.iter()
+        let boards = match self
+            .jira
+            .boards()
+            .list(&search_options_for_config(config))
+            .await
+        {
+            Ok(results) => results
+                .values
+                .iter()
                 .map(|board| BoardSummary {
                     key: board.id,
                     name: board.name.clone(),
