@@ -1,13 +1,25 @@
 use crate::APP_INFO;
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 use app_dirs::*;
 use std::{fs::File, io::BufReader, path::PathBuf};
 
 const CONFIG_FILE_NAME: &str = "config.json";
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize)]
 pub struct Config {
     pub default_project_key: String,
+    pub filter_in_progress: bool,
+    pub filter_mine: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self { 
+        Config {
+            default_project_key: "".to_string(),
+            filter_in_progress: true,
+            filter_mine: true,
+        }
+    }
 }
 
 fn config_file_path() -> Result<PathBuf> {

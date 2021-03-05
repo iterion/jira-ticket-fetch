@@ -46,11 +46,21 @@ fn draw_issues<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
             ListItem::new(lines).style(Style::default().fg(Color::Black).bg(Color::White))
         })
         .collect();
+    let mut title = "Jira Issues".to_string();
+    if app.config.filter_in_progress {
+        title = format!("In Progress {}", title)
+    }
+    if app.config.default_project_key != "" {
+        title = format!("Project: {} - {}", app.config.default_project_key, title)
+    }
+    if app.config.filter_mine {
+        title = format!("{} Owned by Me", title)
+    }
     let issues = List::new(issues)
         .block(
             Block::default()
                 .borders(Borders::ALL)
-                .title("In Progress Jira Issues"),
+                .title(title),
         )
         .highlight_style(
             Style::default()

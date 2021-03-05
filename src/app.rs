@@ -19,11 +19,11 @@ pub struct App {
     pub issues: StatefulList<IssueSummary>,
     pub boards: StatefulList<BoardSummary>,
     pub branches: StatefulList<BranchSummary>,
-    issues_focused: bool,
+    pub config: Config,
     pub input_mode: InputMode,
+    issues_focused: bool,
     input: String,
     repo: Repository,
-    config: Config,
     jira: JiraClient,
 }
 
@@ -95,6 +95,22 @@ impl App {
                     KeyCode::Char('c') => {
                         self.input = "".to_string();
                         self.input_mode = InputMode::EditingDefaultProject;
+                    }
+                    KeyCode::Char('i') => {
+                        self.config.filter_in_progress = !self.config.filter_in_progress;
+                        match self.jira.current_issues(&self.config) {
+                            Ok(issues) => self.issues = StatefulList::with_items(issues),
+                            Err(_) => {} // TODO add error view
+                        }
+                        let _ = save_config(&self.config);
+                    }
+                    KeyCode::Char('m') => {
+                        self.config.filter_mine = !self.config.filter_mine;
+                        match self.jira.current_issues(&self.config) {
+                            Ok(issues) => self.issues = StatefulList::with_items(issues),
+                            Err(_) => {} // TODO add error view
+                        }
+                        let _ = save_config(&self.config);
                     }
                     KeyCode::Enter => {
                         if self.issues_focused {
@@ -188,6 +204,10 @@ impl App {
                     self.config.default_project_key = self.input.to_string();
                     match save_config(&self.config) {
                         Ok(_) => {
+                        match self.jira.current_issues(&self.config) {
+                            Ok(issues) => self.issues = StatefulList::with_items(issues),
+                            Err(_) => {} // TODO add error view
+                        }
                             self.input_mode = InputMode::IssuesList;
                         }
                         Err(e) => {
