@@ -60,6 +60,14 @@ impl App {
         }
     }
 
+    fn open_selected_board(&self) {
+        if let Some(i) = self.boards.state.selected() {
+            let link = self.boards.items[i].permalink.clone();
+            let _ = Command::new("open").arg(link).output();
+        }
+    }
+
+
     fn selected_branch_name(&self) -> Option<String> {
         match self.branches.state.selected() {
             Some(i) => Some(self.branches.items[i].name.clone()),
@@ -193,6 +201,9 @@ impl App {
                 KeyCode::Up => {
                     self.boards.previous();
                 }
+                    KeyCode::Char('o') => {
+                        let _ = self.open_selected_board();
+                    }
                 _ => {}
             },
             InputMode::Editing => match input.code {

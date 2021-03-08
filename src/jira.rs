@@ -86,6 +86,7 @@ impl JiraClient {
                 .map(|board| BoardSummary {
                     key: board.id,
                     name: board.name.clone(),
+                    permalink: board.self_link.clone(),
                 })
                 .collect(),
             Err(err) => panic!("{:#?}", err),
@@ -115,4 +116,5 @@ fn search_options_for_config(config: &Config) -> SearchOptions {
 pub struct BoardSummary {
     pub key: u64,
     pub name: String,
+    pub permalink: String,
 }
