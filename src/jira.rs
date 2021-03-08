@@ -52,7 +52,9 @@ impl JiraClient {
                     .issues
                     .iter()
                     .map(|issue| {
-                        let summary = issue.summary().unwrap_or("No summary given".to_string());
+                        let summary = issue
+                            .summary()
+                            .unwrap_or_else(|| "No summary given".to_string());
                         // let assignee_name = match issue.assignee() {
                         //    Some(u) => u.display_name,
                         //    None => "Unassigned".to_string(),

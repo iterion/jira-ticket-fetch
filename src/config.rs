@@ -25,7 +25,7 @@ impl Default for Config {
 fn config_file_path() -> Result<PathBuf> {
     let mut path = app_root(AppDataType::UserConfig, &APP_INFO)?;
     path.push(CONFIG_FILE_NAME);
-    return Ok(path);
+    Ok(path)
 }
 
 pub fn load_config() -> Config {
@@ -40,15 +40,14 @@ pub fn load_config() -> Config {
     let reader = BufReader::new(file);
 
     // Read the JSON contents of the file as an instance of `Config`.
-    let config: Config = match serde_json::from_reader(reader) {
+    match serde_json::from_reader(reader) {
         Ok(c) => c,
         Err(_) => Default::default(),
-    };
-    return config;
+    }
 }
 
 pub fn save_config(config: &Config) -> Result<()> {
     let file = File::create(config_file_path()?)?;
     serde_json::to_writer(file, &config)?;
-    return Ok(());
+    Ok(())
 }

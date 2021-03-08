@@ -73,8 +73,7 @@ fn draw_branches<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
         .items
         .iter()
         .map(|i| {
-            let line_content = format!("{}", i.name);
-            let lines = vec![Spans::from(line_content)];
+            let lines = vec![Spans::from(i.name.to_string())];
             ListItem::new(lines).style(Style::default().fg(Color::Black).bg(Color::White))
         })
         .collect();
@@ -100,8 +99,7 @@ fn draw_boards<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
         .items
         .iter()
         .map(|i| {
-            let line_content = format!("{}", i.name);
-            let lines = vec![Spans::from(line_content)];
+            let lines = vec![Spans::from(i.name.to_string())];
             ListItem::new(lines).style(Style::default().fg(Color::Black).bg(Color::White))
         })
         .collect();
@@ -146,7 +144,7 @@ fn draw_help<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
 
 fn draw_branch_input<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
     let area = centered_rect(60, 20, area);
-    let input = Paragraph::new(app.new_branch_name().clone())
+    let input = Paragraph::new(app.new_branch_name())
         .style(Style::default().fg(Color::Yellow))
         .block(
             Block::default()

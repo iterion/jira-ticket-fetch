@@ -31,10 +31,9 @@ pub struct App {
 impl App {
     pub async fn new(jira: JiraClient, repo: Repository) -> Result<App> {
         let config = load_config();
-        let issues = jira.current_issues(&config).await?;
         let boards = jira.current_boards(&config).await?;
-        Ok(App {
-            issues: StatefulList::with_items(issues),
+        let mut app = App {
+            issues: StatefulList::new(),
             boards: StatefulList::with_items(boards),
             branches: StatefulList::new(),
             issues_focused: true,
@@ -43,14 +42,19 @@ impl App {
             repo,
             config,
             jira,
-        })
+        };
+        app.reload_issues().await;
+
+        Ok(app)
     }
 
     fn selected_issue_key(&self) -> Option<String> {
-        match self.issues.state.selected() {
-            Some(i) => Some(self.issues.items[i].key.clone()),
-            None => None,
+        if let Some(i) = self.issues.state.selected() {
+            if let Some(issue) = self.issues.items.get(i) {
+                return Some(issue.key.clone());
+            }
         }
+        None
     }
 
     fn selected_issue_permalink(&self) -> Option<String> {
@@ -67,6 +71,14 @@ impl App {
         }
     }
 
+    async fn reload_issues(&mut self) {
+        // TODO add error view
+        if let Ok(issues) = self.jira.current_issues(&self.config).await {
+            self.issues = StatefulList::with_items(issues);
+        }
+        // Select the first if it exists
+        self.focus_next_issue();
+    }
 
     fn selected_branch_name(&self) -> Option<String> {
         match self.branches.state.selected() {
@@ -75,7 +87,19 @@ impl App {
         }
     }
 
-    pub fn find_relevant_branches(&mut self) -> Result<()> {
+    fn focus_next_issue(&mut self) {
+        self.issues.next();
+        // TODO add an error view and surface them if they occur
+        let _ = self.find_relevant_branches();
+    }
+
+    fn focus_previous_issue(&mut self) {
+        self.issues.previous();
+        // TODO add an error view and surface them if they occur
+        let _ = self.find_relevant_branches();
+    }
+
+    fn find_relevant_branches(&mut self) -> Result<()> {
         // Clear out current listed branches
         self.branches.items.clear();
         if let Some(key) = self.selected_issue_key() {
@@ -104,7 +128,6 @@ impl App {
         match self.input_mode {
             InputMode::IssuesList => {
                 match input.code {
-                    KeyCode::Char('q') => bail!("Just exiting early"),
                     KeyCode::Char('b') => {
                         self.input_mode = InputMode::BoardsList;
                     }
@@ -114,40 +137,35 @@ impl App {
                     }
                     KeyCode::Char('i') => {
                         self.config.filter_in_progress = !self.config.filter_in_progress;
-                        match self.jira.current_issues(&self.config).await {
-                            Ok(issues) => self.issues = StatefulList::with_items(issues),
-                            Err(_) => {} // TODO add error view
-                        }
                         let _ = save_config(&self.config);
+                        self.reload_issues().await;
                     }
                     KeyCode::Char('m') => {
                         self.config.filter_mine = !self.config.filter_mine;
-                        match self.jira.current_issues(&self.config).await {
-                            Ok(issues) => self.issues = StatefulList::with_items(issues),
-                            Err(_) => {} // TODO add error view
-                        }
                         let _ = save_config(&self.config);
+                        self.reload_issues().await;
                     }
                     KeyCode::Char('o') => {
                         if let Some(link) = self.selected_issue_permalink() {
                             let _ = Command::new("open").arg(link).output();
                         }
                     }
+                    KeyCode::Char('q') => bail!("Just exiting early"),
+                    KeyCode::Char('r') => {
+                        self.reload_issues().await;
+                    }
                     KeyCode::Enter => {
                         if self.issues_focused {
                             // Focus on first branch
                             self.branches.next();
                             self.issues_focused = false;
-                        } else {
-                            if let Some(name) = self.selected_branch_name() {
-                                // TODO more efficient comparison
-                                if name == "Create New".to_string() {
-                                    self.input_mode = InputMode::Editing;
-                                } else {
-                                    match checkout_branch(&self.repo, name) {
-                                        Ok(_) => bail!("Done!"),
-                                        Err(e) => println!("Error setting branch: {:?}", e),
-                                    }
+                        } else if let Some(name) = self.selected_branch_name() {
+                            if name == *"Create New" {
+                                self.input_mode = InputMode::Editing;
+                            } else {
+                                match checkout_branch(&self.repo, name) {
+                                    Ok(_) => bail!("Done!"),
+                                    Err(e) => println!("Error setting branch: {:?}", e),
                                 }
                             }
                         }
@@ -171,18 +189,14 @@ impl App {
                     }
                     KeyCode::Down => {
                         if self.issues_focused {
-                            self.issues.next();
-                            // TODO add an error view and surface them if they occur
-                            let _ = self.find_relevant_branches();
+                            self.focus_next_issue();
                         } else {
                             self.branches.next();
                         }
                     }
                     KeyCode::Up => {
                         if self.issues_focused {
-                            self.issues.previous();
-                            // TODO add an error view and surface them if they occur
-                            let _ = self.find_relevant_branches();
+                            self.focus_previous_issue();
                         } else {
                             self.branches.previous();
                         }
@@ -201,9 +215,9 @@ impl App {
                 KeyCode::Up => {
                     self.boards.previous();
                 }
-                    KeyCode::Char('o') => {
-                        let _ = self.open_selected_board();
-                    }
+                KeyCode::Char('o') => {
+                    let _ = self.open_selected_board();
+                }
                 _ => {}
             },
             InputMode::Editing => match input.code {
@@ -219,7 +233,6 @@ impl App {
                 }
                 KeyCode::Esc => {
                     self.input_mode = InputMode::IssuesList;
-                    // events.enable_exit_key();
                 }
                 _ => {}
             },
@@ -228,10 +241,7 @@ impl App {
                     self.config.default_project_key = self.input.to_string();
                     match save_config(&self.config) {
                         Ok(_) => {
-                            match self.jira.current_issues(&self.config).await {
-                                Ok(issues) => self.issues = StatefulList::with_items(issues),
-                                Err(_) => {} // TODO add error view
-                            }
+                            self.reload_issues().await;
                             self.input_mode = InputMode::IssuesList;
                         }
                         Err(e) => {
