@@ -24,3 +24,7 @@ branch = "async-update"
 [[bin]]
 name = "git-branch-from-jira"
 path = "src/main.rs"
+
+[[bin]]
+name = "jira"
+path = "src/main.rs"
