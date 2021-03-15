@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use git2::{BranchType, Cred, CredentialType, Direction, RemoteCallbacks, Repository};
 use std::env;
 
+#[derive(Clone)]
 pub struct BranchSummary {
     pub name: String,
 }

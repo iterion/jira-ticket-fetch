@@ -1,14 +1,21 @@
-use crate::app::{App, InputMode};
+use crate::state::{InputMode, State, StateRx};
+use anyhow::Result;
+use crossterm::{
+    event::{DisableMouseCapture, EnableMouseCapture},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use std::io::{stdout, Write};
 use tui::{
-    backend::Backend,
+    backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::Spans,
     widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
-    Frame,
+    Frame, Terminal,
 };
 
-pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
+pub fn draw<B: tui::backend::Backend>(f: &mut Frame<B>, app: &mut State) {
     let size = f.size();
 
     let help_drawer = Layout::default()
@@ -35,7 +42,7 @@ pub fn draw<B: Backend>(f: &mut Frame<B>, app: &mut App) {
     }
 }
 
-fn draw_issues<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
+fn draw_issues<B: tui::backend::Backend>(f: &mut Frame<B>, app: &mut State, area: Rect) {
     let issues: Vec<ListItem> = app
         .issues
         .items
@@ -67,7 +74,7 @@ fn draw_issues<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
     f.render_stateful_widget(issues, area, &mut app.issues.state);
 }
 
-fn draw_branches<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
+fn draw_branches<B: tui::backend::Backend>(f: &mut Frame<B>, app: &mut State, area: Rect) {
     let branches: Vec<ListItem> = app
         .branches
         .items
@@ -93,7 +100,7 @@ fn draw_branches<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
     f.render_stateful_widget(branches, area, &mut app.branches.state);
 }
 
-fn draw_boards<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
+fn draw_boards<B: tui::backend::Backend>(f: &mut Frame<B>, app: &mut State, area: Rect) {
     let boards: Vec<ListItem> = app
         .boards
         .items
@@ -119,7 +126,7 @@ fn draw_boards<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
     f.render_stateful_widget(boards, area, &mut app.boards.state);
 }
 
-fn draw_help<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
+fn draw_help<B: tui::backend::Backend>(f: &mut Frame<B>, app: &State, area: Rect) {
     let help_text = match app.input_mode {
         InputMode::IssuesList => {
             "Up/Down: Navigate issues - Enter/Right: Create new branch - b: Go to list of Jira Boards - q: Quit this application"
@@ -142,7 +149,7 @@ fn draw_help<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
     f.render_widget(help, area);
 }
 
-fn draw_branch_input<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
+fn draw_branch_input<B: tui::backend::Backend>(f: &mut Frame<B>, app: &State, area: Rect) {
     let area = centered_rect(60, 20, area);
     let input = Paragraph::new(app.new_branch_name())
         .style(Style::default().fg(Color::Yellow))
@@ -161,7 +168,7 @@ fn draw_branch_input<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
     );
 }
 
-fn draw_project_input<B: Backend>(f: &mut Frame<B>, app: &mut App, area: Rect) {
+fn draw_project_input<B: tui::backend::Backend>(f: &mut Frame<B>, app: &mut State, area: Rect) {
     let area = centered_rect(60, 20, area);
     let input = Paragraph::new(app.raw_input_clone())
         .style(Style::default().fg(Color::Yellow))
@@ -204,4 +211,41 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             .as_ref(),
         )
         .split(popup_layout[1])[1]
+}
+
+pub async fn init_ui<'a>(mut state_rx: StateRx) -> Result<()> {
+    // Write to stdout, and enter an alternate screen, to avoid overwriting existing
+    // terminal output
+    let mut stdout = stdout();
+
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+
+    // Drop into 'raw' mode, to enable direct drawing to the terminal
+    enable_raw_mode()?;
+
+    // Build terminal. We're using crossterm for *nix + Windows support
+    let backend = CrosstermBackend::new(stdout);
+    let mut terminal = Terminal::new(backend)?;
+
+    // Clear the screen, readying it for output
+    terminal.clear()?;
+
+    loop {
+        match state_rx.recv().await {
+            Some(mut state) => {
+                terminal.draw(|f| draw(f, &mut state))?;
+            }
+            None => break,
+        }
+    }
+
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        DisableMouseCapture
+    )?;
+    disable_raw_mode()?;
+    terminal.show_cursor()?;
+
+    Ok(())
 }

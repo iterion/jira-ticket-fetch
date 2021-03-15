@@ -1,5 +1,6 @@
 use tui::widgets::ListState;
 
+#[derive(Clone)]
 pub struct StatefulList<T> {
     pub state: ListState,
     pub items: Vec<T>,
@@ -31,7 +32,9 @@ impl<T> StatefulList<T> {
             }
             None => 0,
         };
-        self.state.select(Some(i));
+        if self.items.len() > 0 {
+            self.state.select(Some(i));
+        }
     }
 
     pub fn previous(&mut self) {
@@ -45,7 +48,9 @@ impl<T> StatefulList<T> {
             }
             None => 0,
         };
-        self.state.select(Some(i));
+        if self.items.len() > 0 {
+            self.state.select(Some(i));
+        }
     }
 
     // pub fn get_selected(&mut self) -> Option<T> {

@@ -5,7 +5,7 @@ use std::{fs::File, io::BufReader, path::PathBuf};
 
 const CONFIG_FILE_NAME: &str = "config.json";
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Config {
     pub default_project_key: String,
     pub filter_in_progress: bool,

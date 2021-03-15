@@ -3,6 +3,7 @@ use anyhow::{anyhow, Result};
 use goji::{Credentials, Jira, SearchOptions};
 use std::env;
 
+#[derive(Clone)]
 pub struct JiraClient {
     jira: Jira,
 }
@@ -98,7 +99,7 @@ impl JiraClient {
     }
 }
 
-// #[derive(Serialize, Deserialize, Debug)]
+#[derive(Clone)]
 pub struct IssueSummary {
     pub key: String,
     pub summary: String,
@@ -115,6 +116,7 @@ fn search_options_for_config(config: &Config) -> SearchOptions {
     options.build()
 }
 
+#[derive(Clone)]
 pub struct BoardSummary {
     pub key: u64,
     pub name: String,
