@@ -32,7 +32,7 @@ impl<T> StatefulList<T> {
             }
             None => 0,
         };
-        if self.items.len() > 0 {
+        if !self.items.is_empty() {
             self.state.select(Some(i));
         }
     }
@@ -48,7 +48,7 @@ impl<T> StatefulList<T> {
             }
             None => 0,
         };
-        if self.items.len() > 0 {
+        if !self.items.is_empty() {
             self.state.select(Some(i));
         }
     }

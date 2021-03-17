@@ -25,7 +25,7 @@ pub fn subscribe_to_key_events(tx: EventsTx) {
                     match maybe_event {
                         Some(Ok(event)) => {
                             if let CrosstermEvent::Key(input) = event {
-                                tx.send(Event::KeyEvent(input.code));
+                                let _ = tx.send(Event::KeyEvent(input.code));
 
                             }
                         },

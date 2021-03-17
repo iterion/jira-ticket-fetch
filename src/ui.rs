@@ -230,13 +230,8 @@ pub async fn init_ui<'a>(mut state_rx: StateRx) -> Result<()> {
     // Clear the screen, readying it for output
     terminal.clear()?;
 
-    loop {
-        match state_rx.recv().await {
-            Some(mut state) => {
-                terminal.draw(|f| draw(f, &mut state))?;
-            }
-            None => break,
-        }
+    while let Some(mut state) = state_rx.recv().await {
+        terminal.draw(|f| draw(f, &mut state))?;
     }
 
     execute!(

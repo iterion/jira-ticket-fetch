@@ -38,11 +38,9 @@ pub async fn updater(
             if let Some(event_type) = event_rx.recv().await {
                 match event_type {
                     Event::KeyEvent(code) => {
-                        // TODO this is kind of weird, we use an error handle quitting, refactor
+                        // TODO this is kind of weird, we use an error to handle quitting, refactor
                         // with channels
-                        if let Err(_) =
-                            handle_input(&mut state, code, event_tx.clone(), jira.clone()).await
-                        {
+                        if handle_input(&mut state, code, event_tx.clone(), jira.clone()).await.is_err() {
                             break;
                         }
                         let _ = tx.send(state.clone()).await;
@@ -54,6 +52,12 @@ pub async fn updater(
 
                         let _ = tx.send(state.clone()).await;
                     }
+                    Event::BoardsUpdated(boards) => {
+                        state.boards.items = boards;
+                        state.boards.next();
+
+                        let _ = tx.send(state.clone()).await;
+                    }
                     Event::BranchesUpdated(branches) => {
                         state.branches.items = branches;
                         state.branches.items.push(BranchSummary {
@@ -62,7 +66,6 @@ pub async fn updater(
 
                         let _ = tx.send(state.clone()).await;
                     }
-                    _ => {}
                 }
             }
         }
@@ -75,6 +78,14 @@ async fn fetch_tickets(event_tx: EventsTx, jira: JiraClient, state: State) {
     tokio::spawn(async move {
         if let Ok(issues) = jira.current_issues(&state.config).await {
             assert!(event_tx.send(Event::IssuesUpdated(issues)).is_ok())
+        }
+    });
+}
+
+async fn fetch_boards(event_tx: EventsTx, jira: JiraClient, state: State) {
+    tokio::spawn(async move {
+        if let Ok(boards) = jira.current_boards(&state.config).await {
+            assert!(event_tx.send(Event::BoardsUpdated(boards)).is_ok())
         }
     });
 }
@@ -113,7 +124,6 @@ pub struct State {
 impl State {
     pub fn new() -> State {
         let config = load_config();
-        // let boards = jira.current_boards(&config).await?;
         State {
             issues: StatefulList::new(),
             boards: StatefulList::new(),
@@ -177,6 +187,7 @@ async fn handle_input(
         InputMode::IssuesList => match input {
             KeyCode::Char('b') => {
                 state.input_mode = InputMode::BoardsList;
+                fetch_boards(event_tx, jira.clone(), state.clone()).await;
             }
             KeyCode::Char('c') => {
                 state.input = state.config.default_project_key.clone();
