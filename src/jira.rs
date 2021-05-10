@@ -97,6 +97,41 @@ impl JiraClient {
 
         Ok(boards)
     }
+
+    pub async fn get_transitions(&self, id: String) -> Result<Vec<TransitionSummary>> {
+        let meta = match self
+            .jira
+            .issues()
+            .get_transitions(id)
+            .await
+        {
+            Ok(results) => results
+                .transitions
+                .iter()
+                .map(|transition| TransitionSummary {
+                    key: transition.id.clone(),
+                    name: transition.name.clone(),
+                })
+                .collect(),
+            Err(err) => panic!("{:#?}", err),
+        };
+
+        Ok(meta)
+    }
+
+    pub async fn do_transition(&self, issue_id: String, transition_id: String) -> Result<()> {
+        let meta = match self
+            .jira
+            .issues()
+            .do_transition(issue_id, None, transition_id)
+            .await
+        {
+            Ok(_results) => (),
+            Err(err) => panic!("{:#?}", err),
+        };
+
+        Ok(meta)
+    }
 }
 
 #[derive(Clone)]
@@ -121,4 +156,10 @@ pub struct BoardSummary {
     pub key: u64,
     pub name: String,
     pub permalink: String,
+}
+
+#[derive(Clone)]
+pub struct TransitionSummary {
+    pub key: String,
+    pub name: String,
 }

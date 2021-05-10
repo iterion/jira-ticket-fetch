@@ -8,13 +8,12 @@ use crate::{
         matching_branches,
         BranchSummary,
     },
-    jira::{BoardSummary, IssueSummary, JiraClient},
+    jira::{BoardSummary, IssueSummary, TransitionSummary, JiraClient},
     utils::StatefulList,
 };
 use anyhow::{bail, Result};
 use crossterm::event::KeyCode;
 use tokio::sync::mpsc;
-// use git2::Repository;
 use std::process::Command;
 
 pub type StateRx = mpsc::Receiver<State>;
@@ -43,6 +42,16 @@ pub async fn updater(
                         if handle_input(&mut state, code, event_tx.clone(), jira.clone()).await.is_err() {
                             break;
                         }
+                        let _ = tx.send(state.clone()).await;
+                    }
+                    Event::TransitionsFetched(transitions) => {
+                        state.transitions = StatefulList::with_items(transitions);
+                        state.transitions.next();
+                        let _ = tx.send(state.clone()).await;
+                    }
+                    Event::TransitionExecuted => {
+                        state.transitions = StatefulList::new();
+                        state.input_mode = InputMode::IssuesList;
                         let _ = tx.send(state.clone()).await;
                     }
                     Event::IssuesUpdated(issues) => {
@@ -90,6 +99,20 @@ async fn fetch_boards(event_tx: EventsTx, jira: JiraClient, state: State) {
     });
 }
 
+async fn fetch_transitions(event_tx: EventsTx, jira: JiraClient, state: State) {
+    tokio::spawn(async move {
+        if let Some(key) = state.selected_issue_key() {
+            if let Ok(transitions) = jira.get_transitions(key).await {
+                // let mut path = app_root(AppDataType::UserConfig, &APP_INFO).unwrap();
+                // path.push(TEMP_BUFFER_NAME);
+                // let file = File::create(path).unwrap();
+                // serde_json::to_writer_pretty(file, &editmeta).unwrap();
+                assert!(event_tx.send(Event::TransitionsFetched(transitions)).is_ok())
+            }
+        }
+    });
+}
+
 async fn find_relevant_branches(event_tx: EventsTx, state: State) {
     if let Some(key) = state.selected_issue_key() {
         tokio::spawn(async move {
@@ -102,11 +125,23 @@ async fn find_relevant_branches(event_tx: EventsTx, state: State) {
     };
 }
 
+async fn do_selected_transition(event_tx: EventsTx, jira: JiraClient, state: State) {
+    tokio::spawn(async move {
+        if let Some(i) = state.transitions.state.selected() {
+            let transition_id = state.transitions.items[i].key.clone();
+            if let Ok(_) = jira.do_transition(state.selected_issue_key().unwrap(), transition_id).await {
+                assert!(event_tx.send(Event::TransitionExecuted).is_ok())
+            }
+        }
+    });
+}
+
 #[derive(Clone)]
 pub enum InputMode {
     IssuesList,
     BoardsList,
     Editing,
+    UpdateIssueStatus,
     EditingDefaultProject,
 }
 
@@ -115,6 +150,7 @@ pub struct State {
     pub issues: StatefulList<IssueSummary>,
     pub boards: StatefulList<BoardSummary>,
     pub branches: StatefulList<BranchSummary>,
+    pub transitions: StatefulList<TransitionSummary>,
     pub config: Config,
     pub input_mode: InputMode,
     issues_focused: bool,
@@ -128,6 +164,7 @@ impl State {
             issues: StatefulList::new(),
             boards: StatefulList::new(),
             branches: StatefulList::new(),
+            transitions: StatefulList::new(),
             issues_focused: true,
             input_mode: InputMode::IssuesList,
             input: String::new(),
@@ -215,6 +252,11 @@ async fn handle_input(
                 // TODO fix cloning
                 fetch_tickets(event_tx, jira.clone(), state.clone()).await;
             }
+            KeyCode::Char('s') => {
+                // TODO fix cloning
+                fetch_transitions(event_tx, jira.clone(), state.clone()).await;
+                state.input_mode = InputMode::UpdateIssueStatus;
+            }
             KeyCode::Enter => {
                 if state.issues_focused {
                     // Focus on first branch
@@ -282,6 +324,21 @@ async fn handle_input(
             }
             _ => {}
         },
+        InputMode::UpdateIssueStatus => match input {
+            KeyCode::Esc => {
+                state.input_mode = InputMode::IssuesList;
+            }
+            KeyCode::Down => {
+                state.transitions.next();
+            }
+            KeyCode::Up => {
+                state.transitions.previous();
+            }
+            KeyCode::Enter => {
+                do_selected_transition(event_tx, jira.clone(), state.clone()).await;
+            }
+            _ => {}
+        }
         InputMode::Editing => match input {
             KeyCode::Enter =>  {
                 if let Ok(repo) = get_current_repo() {
@@ -307,8 +364,8 @@ async fn handle_input(
                 state.config.default_project_key = state.input.to_string();
                 match save_config(&state.config) {
                     Ok(_) => {
-                        // self.reload_issues().await;
                         state.input_mode = InputMode::IssuesList;
+                        fetch_tickets(event_tx, jira.clone(), state.clone()).await;
                     }
                     Err(e) => {
                         state.input = e.to_string();

@@ -1,12 +1,14 @@
 use crate::{
     git::BranchSummary,
-    jira::{BoardSummary, IssueSummary},
+    jira::{BoardSummary, IssueSummary, TransitionSummary},
 };
 use crossterm::event::{Event as CrosstermEvent, EventStream, KeyCode};
 use futures::{future::FutureExt, StreamExt};
 use tokio::sync::mpsc;
 pub enum Event {
     KeyEvent(KeyCode),
+    TransitionsFetched(Vec<TransitionSummary>),
+    TransitionExecuted,
     IssuesUpdated(Vec<IssueSummary>),
     BoardsUpdated(Vec<BoardSummary>),
     BranchesUpdated(Vec<BranchSummary>),

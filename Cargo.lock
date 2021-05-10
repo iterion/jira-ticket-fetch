@@ -278,7 +278,7 @@ dependencies = [
 [[package]]
 name = "goji"
 version = "0.2.4"
-source = "git+https://github.com/iterion/goji?branch=async-update#61143b641a003cd55a748ecf1e33a090fb75b1d3"
+source = "git+https://github.com/iterion/goji?branch=async-update#8435cb339d4e8aabf0a0712ea9ec21a7c0da2e5c"
 dependencies = [
  "log",
  "reqwest",

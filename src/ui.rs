@@ -38,6 +38,7 @@ pub fn draw<B: tui::backend::Backend>(f: &mut Frame<B>, app: &mut State) {
             draw_boards(f, app, chunks[0]);
         }
         InputMode::Editing => draw_branch_input(f, app, size),
+        InputMode::UpdateIssueStatus => draw_update_issue_status(f, app, size),
         InputMode::EditingDefaultProject => draw_project_input(f, app, size),
     }
 }
@@ -129,11 +130,12 @@ fn draw_boards<B: tui::backend::Backend>(f: &mut Frame<B>, app: &mut State, area
 fn draw_help<B: tui::backend::Backend>(f: &mut Frame<B>, app: &State, area: Rect) {
     let help_text = match app.input_mode {
         InputMode::IssuesList => {
-            "Up/Down: Navigate issues - Enter/Right: Create new branch - b: Go to list of Jira Boards - q: Quit this application"
+            "Up/Down: Navigate issues - Enter/Right: Create new branch - b: Go to list of Jira Boards - c: Change project key - i: Filter in/not in progress - q: Quit this application"
         }
         InputMode::BoardsList => {
             "Boards"
         }
+        InputMode::UpdateIssueStatus => "Update Issue Status",
         InputMode::Editing =>  {
             "Editing"
         }
@@ -147,6 +149,33 @@ fn draw_help<B: tui::backend::Backend>(f: &mut Frame<B>, app: &State, area: Rect
         .block(Block::default().borders(Borders::NONE));
     f.render_widget(Clear, area);
     f.render_widget(help, area);
+}
+
+fn draw_update_issue_status<B: tui::backend::Backend>(f: &mut Frame<B>, app: &mut State, area: Rect) {
+    let area = centered_rect(60, 20, area);
+    let transitions: Vec<ListItem> = app
+        .transitions
+        .items
+        .iter()
+        .map(|i| {
+            let lines = vec![Spans::from(i.name.to_string())];
+            ListItem::new(lines).style(Style::default().fg(Color::Black).bg(Color::White))
+        })
+        .collect();
+    let transitions = List::new(transitions)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Transitions"),
+        )
+        .highlight_style(
+            Style::default()
+                .bg(Color::LightGreen)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol(">> ");
+
+    f.render_stateful_widget(transitions, area, &mut app.transitions.state);
 }
 
 fn draw_branch_input<B: tui::backend::Backend>(f: &mut Frame<B>, app: &State, area: Rect) {
