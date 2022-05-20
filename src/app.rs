@@ -131,7 +131,7 @@ impl App {
                     KeyCode::Char('b') => {
                         self.input_mode = InputMode::BoardsList;
                     }
-                    KeyCode::Char('c') => {
+                    KeyCode::Char('p') => {
                         self.input = self.config.default_project_key.clone();
                         self.input_mode = InputMode::EditingDefaultProject;
                     }
