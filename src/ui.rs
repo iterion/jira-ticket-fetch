@@ -130,7 +130,7 @@ fn draw_boards<B: tui::backend::Backend>(f: &mut Frame<B>, app: &mut State, area
 fn draw_help<B: tui::backend::Backend>(f: &mut Frame<B>, app: &State, area: Rect) {
     let help_text = match app.input_mode {
         InputMode::IssuesList => {
-            "Up/Down: Navigate issues - Enter/Right: Create new branch - b: Go to list of Jira Boards - p: Change project key - i: Filter in/not in progress - q: Quit this application"
+            "Up/Down: Navigate issues - Enter/Right: Create new branch - b: Go to list of Jira Boards - m: Filter to issues owned by me - p: Change project key - i: Filter in/not in progress - q: Quit this application"
         }
         InputMode::BoardsList => {
             "Boards"

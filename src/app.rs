@@ -243,6 +243,7 @@ impl App {
                         Ok(_) => {
                             self.reload_issues().await;
                             self.input_mode = InputMode::IssuesList;
+                            self.input = "".to_string();
                         }
                         Err(e) => {
                             self.input = e.to_string();
